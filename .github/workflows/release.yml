@@ -1,0 +1,323 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  DIOXUS_CLI_VERSION: 0.7.9
+
+jobs:
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libayatana-appindicator3-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libsoup-3.0-dev \
+            libwebkit2gtk-4.1-dev
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt,clippy
+          target: wasm32-unknown-unknown,x86_64-apple-ios,x86_64-linux-android
+          rustflags: ""
+
+      - name: Install Dioxus CLI
+        run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
+
+      - name: Cargo format
+        run: cargo fmt --all --check
+
+      - name: Dioxus format
+        run: dx fmt --check
+
+      - name: Cargo lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Dioxus check web
+        run: dx check --package web --platform web --locked
+
+      - name: Dioxus check Linux
+        run: dx check --package desktop --platform linux --locked
+
+      - name: Dioxus check macOS
+        run: dx check --package desktop --platform macos --locked
+
+      - name: Dioxus check Windows
+        run: dx check --package desktop --platform windows --locked
+
+      - name: Dioxus check Android
+        run: dx check --package mobile --platform android --locked
+
+      - name: Dioxus check iOS
+        run: dx check --package mobile --platform ios --locked
+
+      - name: Cargo test
+        run: cargo test --workspace --locked
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    needs: quality
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install web dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y binaryen
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32-unknown-unknown
+          rustflags: ""
+
+      - name: Install Dioxus CLI
+        run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
+
+      - name: Build web
+        run: dx build --package web --platform web --release --locked
+
+      - name: Archive web
+        run: |
+          mkdir -p release
+          tar -C target/dx/web/release/web/public -czf "release/lattis-web-${GITHUB_REF_NAME}.tar.gz" .
+
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-web
+          path: release/*
+          if-no-files-found: error
+
+  linux:
+    name: Linux
+    runs-on: ubuntu-latest
+    needs: quality
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libayatana-appindicator3-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libsoup-3.0-dev \
+            libwebkit2gtk-4.1-dev
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          rustflags: ""
+
+      - name: Install Dioxus CLI
+        run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
+
+      - name: Bundle Linux
+        run: dx bundle --package desktop --platform linux --release --locked --package-types deb --out-dir dist/linux
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-linux
+          path: dist/linux/*
+          if-no-files-found: error
+
+  macos:
+    name: macOS
+    runs-on: macos-latest
+    needs: quality
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          rustflags: ""
+
+      - name: Install Dioxus CLI
+        run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
+
+      - name: Bundle macOS
+        run: dx bundle --package desktop --platform macos --release --locked --package-types dmg --codesign false --out-dir dist/macos
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-macos
+          path: dist/macos/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    needs: quality
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Windows dependencies
+        shell: pwsh
+        run: choco install nsis -y --no-progress
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          rustflags: ""
+
+      - name: Install Dioxus CLI
+        shell: bash
+        run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
+
+      - name: Bundle Windows
+        shell: bash
+        run: dx bundle --package desktop --platform windows --release --locked --package-types nsis --out-dir dist/windows
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-windows
+          path: dist/windows/*
+          if-no-files-found: error
+
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    needs: quality
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android dependencies
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+          rustflags: ""
+
+      - name: Install Dioxus CLI
+        run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
+
+      - name: Bundle Android
+        run: dx bundle --package mobile --platform android --release --locked --package-types apk --out-dir dist/android
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-android
+          path: dist/android/*
+          if-no-files-found: error
+
+  ios:
+    name: iOS
+    runs-on: macos-latest
+    needs: quality
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+          rustflags: ""
+
+      - name: Install Dioxus CLI
+        run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
+
+      - name: Bundle iOS
+        run: dx bundle --package mobile --platform ios --release --locked --package-types ios --codesign false --out-dir dist/ios
+
+      - name: Archive iOS
+        run: |
+          mkdir -p release
+          app_path="$(find dist/ios -name "*.app" -type d | head -n 1)"
+          test -n "$app_path"
+          ditto -c -k --sequesterRsrc --keepParent "$app_path" "release/lattis-ios-${GITHUB_REF_NAME}.zip"
+
+      - name: Upload iOS artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-ios
+          path: release/*
+          if-no-files-found: error
+
+  release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - web
+      - linux
+      - macos
+      - windows
+      - android
+      - ios
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: List assets
+        run: find release-assets -maxdepth 2 -type f -print
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: Lattis ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: release-assets/*

@@ -1,4 +1,5 @@
 [application]
+name = "Lattis"
 tailwind_input = "assets/tailwind.css"
 tailwind_output = "assets/app.css"
 
