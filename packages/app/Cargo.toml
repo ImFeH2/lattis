@@ -1,0 +1,8 @@
+[package]
+name = "lattis"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dioxus = { workspace = true, features = ["router"] }
+lattis-core = { workspace = true }
