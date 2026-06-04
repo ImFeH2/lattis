@@ -51,7 +51,9 @@ jobs:
           version: 1.19.1
 
       - name: Install Dioxus CLI
-        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force --locked
 
       - name: Cargo format
         run: cargo fmt --all --check

@@ -50,7 +50,9 @@ jobs:
           version: 1.19.1
 
       - name: Install Dioxus CLI
-        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force --locked
 
       - name: Cargo format
         run: cargo fmt --all --check
@@ -112,7 +114,9 @@ jobs:
           version: 1.19.1
 
       - name: Install Dioxus CLI
-        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force --locked
 
       - name: Build web
         run: dx build --package web --platform web --release --locked
@@ -164,7 +168,9 @@ jobs:
           version: 1.19.1
 
       - name: Install Dioxus CLI
-        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force --locked
 
       - name: Bundle Linux
         run: dx bundle --package desktop --platform linux --release --locked --package-types deb --out-dir dist/linux
@@ -200,7 +206,9 @@ jobs:
           version: 1.19.1
 
       - name: Install Dioxus CLI
-        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force --locked
 
       - name: Bundle macOS
         run: dx bundle --package desktop --platform macos --release --locked --package-types dmg --codesign false --out-dir dist/macos
@@ -241,7 +249,9 @@ jobs:
 
       - name: Install Dioxus CLI
         shell: bash
-        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force --locked
 
       - name: Bundle Windows
         shell: bash
@@ -295,7 +305,9 @@ jobs:
           version: 1.19.1
 
       - name: Install Dioxus CLI
-        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force --locked
 
       - name: Bundle Android
         run: dx bundle --package mobile --platform android --release --locked --package-types apk --out-dir dist/android
@@ -332,7 +344,9 @@ jobs:
           version: 1.19.1
 
       - name: Install Dioxus CLI
-        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force --locked
 
       - name: Bundle iOS
         run: dx bundle --package mobile --platform ios --release --locked --package-types ios --codesign false --out-dir dist/ios
