@@ -124,7 +124,7 @@ jobs:
       - name: Archive web
         run: |
           mkdir -p release
-          tar -C target/dx/web/release/web/public -czf "release/lattis-web-${GITHUB_REF_NAME}.tar.gz" .
+          tar -C target/dx/web/release/web/public -czf "release/Lattis-${GITHUB_REF_NAME}-web.tar.gz" .
 
       - name: Upload web artifact
         uses: actions/upload-artifact@v7
@@ -175,11 +175,18 @@ jobs:
       - name: Bundle Linux
         run: dx bundle --package desktop --platform linux --release --locked --package-types deb --out-dir dist/linux
 
+      - name: Archive Linux
+        run: |
+          mkdir -p release
+          deb_path="$(find dist/linux -name "*.deb" -type f | sort | head -n 1)"
+          test -n "$deb_path"
+          cp "$deb_path" "release/Lattis-${GITHUB_REF_NAME}-linux.deb"
+
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v7
         with:
           name: release-linux
-          path: dist/linux/*
+          path: release/*
           if-no-files-found: error
 
   macos:
@@ -213,11 +220,18 @@ jobs:
       - name: Bundle macOS
         run: dx bundle --package desktop --platform macos --release --locked --package-types dmg --codesign false --out-dir dist/macos
 
+      - name: Archive macOS
+        run: |
+          mkdir -p release
+          dmg_path="$(find dist/macos -name "*.dmg" -type f | sort | head -n 1)"
+          test -n "$dmg_path"
+          cp "$dmg_path" "release/Lattis-${GITHUB_REF_NAME}-macos.dmg"
+
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v7
         with:
           name: release-macos
-          path: dist/macos/*
+          path: release/*
           if-no-files-found: error
 
   windows:
@@ -257,11 +271,19 @@ jobs:
         shell: bash
         run: dx bundle --package desktop --platform windows --release --locked --package-types nsis --out-dir dist/windows
 
+      - name: Archive Windows
+        shell: bash
+        run: |
+          mkdir -p release
+          installer_path="$(find dist/windows -name "*.exe" -type f | sort | head -n 1)"
+          test -n "$installer_path"
+          cp "$installer_path" "release/Lattis-${GITHUB_REF_NAME}-windows.exe"
+
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v7
         with:
           name: release-windows
-          path: dist/windows/*
+          path: release/*
           if-no-files-found: error
 
   android:
@@ -312,11 +334,25 @@ jobs:
       - name: Bundle Android
         run: dx bundle --package mobile --platform android --release --locked --package-types apk --out-dir dist/android
 
+      - name: Build unsigned Android release APK
+        run: |
+          gradle_wrapper="$(find target/dx -path "*/release/android/app/gradlew" -type f | sort | head -n 1)"
+          test -n "$gradle_wrapper"
+          gradle_project="$(dirname "$gradle_wrapper")"
+          "$gradle_wrapper" -p "$gradle_project" assembleRelease
+
+      - name: Archive Android
+        run: |
+          mkdir -p release
+          apk_path="$(find target/dx -path "*/release/android/app/app/build/outputs/apk/release/*-unsigned.apk" -type f | sort | head -n 1)"
+          test -n "$apk_path"
+          cp "$apk_path" "release/Lattis-${GITHUB_REF_NAME}-android.apk"
+
       - name: Upload Android artifact
         uses: actions/upload-artifact@v7
         with:
           name: release-android
-          path: dist/android/*
+          path: release/*
           if-no-files-found: error
 
   ios:
@@ -356,7 +392,10 @@ jobs:
           mkdir -p release
           app_path="$(find dist/ios -name "*.app" -type d | head -n 1)"
           test -n "$app_path"
-          ditto -c -k --sequesterRsrc --keepParent "$app_path" "release/lattis-ios-${GITHUB_REF_NAME}.zip"
+          staging_dir="$(mktemp -d)"
+          mkdir -p "$staging_dir/Payload"
+          ditto "$app_path" "$staging_dir/Payload/$(basename "$app_path")"
+          ditto -c -k --sequesterRsrc --keepParent "$staging_dir/Payload" "release/Lattis-${GITHUB_REF_NAME}-ios.ipa"
 
       - name: Upload iOS artifact
         uses: actions/upload-artifact@v7
