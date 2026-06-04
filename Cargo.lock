@@ -877,7 +877,7 @@ dependencies = [
 
 [[package]]
 name = "desktop"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "dioxus",
  "lattis",
@@ -2783,7 +2783,7 @@ dependencies = [
 
 [[package]]
 name = "lattis"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "dioxus",
  "lattis-core",
@@ -2791,7 +2791,7 @@ dependencies = [
 
 [[package]]
 name = "lattis-core"
-version = "0.1.1"
+version = "0.1.2"
 
 [[package]]
 name = "lazy-js-bundle"
@@ -3157,7 +3157,7 @@ dependencies = [
 
 [[package]]
 name = "mobile"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "dioxus",
  "lattis",
@@ -5717,7 +5717,7 @@ dependencies = [
 
 [[package]]
 name = "web"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "dioxus",
  "lattis",
