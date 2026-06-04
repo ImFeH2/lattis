@@ -30,6 +30,7 @@ jobs:
             libgtk-3-dev \
             librsvg2-dev \
             libsoup-3.0-dev \
+            libxdo-dev \
             libwebkit2gtk-4.1-dev
 
       - name: Set up Rust
@@ -135,6 +136,7 @@ jobs:
             libgtk-3-dev \
             librsvg2-dev \
             libsoup-3.0-dev \
+            libxdo-dev \
             libwebkit2gtk-4.1-dev
 
       - name: Set up Rust
