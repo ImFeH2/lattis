@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  DIOXUS_CLI_VERSION: 0.7.9
+
+jobs:
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libayatana-appindicator3-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libsoup-3.0-dev \
+            libwebkit2gtk-4.1-dev
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt,clippy
+          target: wasm32-unknown-unknown,x86_64-apple-ios,x86_64-linux-android
+          rustflags: ""
+
+      - name: Install Dioxus CLI
+        run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
+
+      - name: Cargo format
+        run: cargo fmt --all --check
+
+      - name: Dioxus format
+        run: dx fmt --check
+
+      - name: Cargo lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Dioxus check web
+        run: dx check --package web --platform web --locked
+
+      - name: Dioxus check Linux
+        run: dx check --package desktop --platform linux --locked
+
+      - name: Dioxus check macOS
+        run: dx check --package desktop --platform macos --locked
+
+      - name: Dioxus check Windows
+        run: dx check --package desktop --platform windows --locked
+
+      - name: Dioxus check Android
+        run: dx check --package mobile --platform android --locked
+
+      - name: Dioxus check iOS
+        run: dx check --package mobile --platform ios --locked
+
+      - name: Cargo test
+        run: cargo test --workspace --locked
+
+      - name: Build web
+        run: dx build --package web --platform web --locked
