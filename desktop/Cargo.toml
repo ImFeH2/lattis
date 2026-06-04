@@ -8,6 +8,10 @@ license.workspace = true
 repository.workspace = true
 readme.workspace = true
 
+[[bin]]
+name = "lattis"
+path = "src/main.rs"
+
 [dependencies]
 dioxus = { workspace = true, features = ["desktop"] }
 lattis = { workspace = true }

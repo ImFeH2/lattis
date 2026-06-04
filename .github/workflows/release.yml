@@ -124,7 +124,9 @@ jobs:
       - name: Archive web
         run: |
           mkdir -p release
-          tar -C target/dx/web/release/web/public -czf "release/Lattis-${GITHUB_REF_NAME}-web.tar.gz" .
+          public_dir="$(find target/dx -path "*/release/web/public" -type d | sort | head -n 1)"
+          test -n "$public_dir"
+          tar -C "$public_dir" -czf "release/Lattis-${GITHUB_REF_NAME}-web.tar.gz" .
 
       - name: Upload web artifact
         uses: actions/upload-artifact@v7
