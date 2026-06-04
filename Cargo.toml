@@ -1,14 +1,14 @@
 [workspace]
 resolver = "2"
 members = [
-    "packages/app",
-    "packages/core",
-    "packages/desktop",
-    "packages/mobile",
-    "packages/web",
+    "app",
+    "core",
+    "desktop",
+    "mobile",
+    "web",
 ]
 
 [workspace.dependencies]
 dioxus = { version = "0.7.9" }
-lattis = { path = "packages/app" }
-lattis-core = { path = "packages/core" }
+lattis = { path = "app" }
+lattis-core = { path = "core" }

@@ -1,6 +1,6 @@
 [application]
-tailwind_input = "../app/assets/tailwind.css"
-tailwind_output = "../app/assets/app.css"
+tailwind_input = "assets/tailwind.css"
+tailwind_output = "assets/app.css"
 
 [bundle]
 identifier = "im.feh2.lattis"
