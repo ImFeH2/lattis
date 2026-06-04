@@ -45,8 +45,13 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@v1.19.1
+        with:
+          version: 1.19.1
+
       - name: Install Dioxus CLI
-        run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
+        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force
 
       - name: Cargo format
         run: cargo fmt --all --check

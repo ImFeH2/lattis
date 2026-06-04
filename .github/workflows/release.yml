@@ -44,8 +44,13 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@v1.19.1
+        with:
+          version: 1.19.1
+
       - name: Install Dioxus CLI
-        run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
+        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force
 
       - name: Cargo format
         run: cargo fmt --all --check
@@ -101,8 +106,13 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@v1.19.1
+        with:
+          version: 1.19.1
+
       - name: Install Dioxus CLI
-        run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
+        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force
 
       - name: Build web
         run: dx build --package web --platform web --release --locked
@@ -148,8 +158,13 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@v1.19.1
+        with:
+          version: 1.19.1
+
       - name: Install Dioxus CLI
-        run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
+        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force
 
       - name: Bundle Linux
         run: dx bundle --package desktop --platform linux --release --locked --package-types deb --out-dir dist/linux
@@ -179,8 +194,13 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@v1.19.1
+        with:
+          version: 1.19.1
+
       - name: Install Dioxus CLI
-        run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
+        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force
 
       - name: Bundle macOS
         run: dx bundle --package desktop --platform macos --release --locked --package-types dmg --codesign false --out-dir dist/macos
@@ -214,9 +234,14 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@v1.19.1
+        with:
+          version: 1.19.1
+
       - name: Install Dioxus CLI
         shell: bash
-        run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
+        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force
 
       - name: Bundle Windows
         shell: bash
@@ -261,8 +286,13 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@v1.19.1
+        with:
+          version: 1.19.1
+
       - name: Install Dioxus CLI
-        run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
+        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force
 
       - name: Bundle Android
         run: dx bundle --package mobile --platform android --release --locked --package-types apk --out-dir dist/android
@@ -293,8 +323,13 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@v1.19.1
+        with:
+          version: 1.19.1
+
       - name: Install Dioxus CLI
-        run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
+        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force
 
       - name: Bundle iOS
         run: dx bundle --package mobile --platform ios --release --locked --package-types ios --codesign false --out-dir dist/ios
