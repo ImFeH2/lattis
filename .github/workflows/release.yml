@@ -40,6 +40,9 @@ jobs:
           target: wasm32-unknown-unknown,x86_64-apple-ios,x86_64-linux-android
           rustflags: ""
 
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
       - name: Install Dioxus CLI
         run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
 
@@ -94,6 +97,9 @@ jobs:
           target: wasm32-unknown-unknown
           rustflags: ""
 
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
       - name: Install Dioxus CLI
         run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
 
@@ -137,6 +143,9 @@ jobs:
           toolchain: stable
           rustflags: ""
 
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
       - name: Install Dioxus CLI
         run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
 
@@ -164,6 +173,9 @@ jobs:
         with:
           toolchain: stable
           rustflags: ""
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
 
       - name: Install Dioxus CLI
         run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
@@ -196,6 +208,9 @@ jobs:
         with:
           toolchain: stable
           rustflags: ""
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
 
       - name: Install Dioxus CLI
         shell: bash
@@ -241,6 +256,9 @@ jobs:
           target: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
           rustflags: ""
 
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
       - name: Install Dioxus CLI
         run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
 
@@ -269,6 +287,9 @@ jobs:
           toolchain: stable
           target: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
           rustflags: ""
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
 
       - name: Install Dioxus CLI
         run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked

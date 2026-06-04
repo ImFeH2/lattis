@@ -41,6 +41,9 @@ jobs:
           target: wasm32-unknown-unknown,x86_64-apple-ios,x86_64-linux-android
           rustflags: ""
 
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
       - name: Install Dioxus CLI
         run: cargo install dioxus-cli --version "$DIOXUS_CLI_VERSION" --locked
 
