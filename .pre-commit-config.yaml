@@ -31,12 +31,6 @@ repos:
         pass_filenames: false
         types_or: [rust, toml]
 
-      - id: dx-check-web
-        name: Dioxus check web
-        entry: dx check --package web --platform web
-        language: system
-        pass_filenames: false
-
       - id: dx-check-linux
         name: Dioxus check Linux
         entry: dx check --package desktop --platform linux

@@ -38,7 +38,7 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt,clippy
-          target: wasm32-unknown-unknown,x86_64-apple-ios,x86_64-linux-android
+          target: x86_64-apple-ios,x86_64-linux-android
           rustflags: ""
 
       - name: Cache Rust
@@ -63,9 +63,6 @@ jobs:
       - name: Cargo lint
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Dioxus check web
-        run: dx check --package web --platform web --locked
-
       - name: Dioxus check Linux
         run: dx check --package desktop --platform linux --locked
 
@@ -83,57 +80,6 @@ jobs:
 
       - name: Cargo test
         run: cargo test --workspace --locked
-
-  web:
-    name: Web
-    runs-on: ubuntu-latest
-    needs: quality
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Install web dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y binaryen
-
-      - name: Set up Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-          target: wasm32-unknown-unknown
-          rustflags: ""
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@v1.19.1
-        with:
-          version: 1.19.1
-
-      - name: Install Dioxus CLI
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force --locked
-
-      - name: Build web
-        run: dx build --package web --platform web --release --locked
-
-      - name: Archive web
-        run: |
-          mkdir -p release
-          public_dir="$(find target/dx -path "*/release/web/public" -type d | sort | head -n 1)"
-          test -n "$public_dir"
-          tar -C "$public_dir" -czf "release/Lattis-${GITHUB_REF_NAME}-web.tar.gz" .
-
-      - name: Upload web artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-web
-          path: release/*
-          if-no-files-found: error
 
   linux:
     name: Linux
@@ -410,7 +356,6 @@ jobs:
     name: GitHub Release
     runs-on: ubuntu-latest
     needs:
-      - web
       - linux
       - macos
       - windows

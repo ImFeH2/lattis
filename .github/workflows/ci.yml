@@ -39,7 +39,7 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt,clippy
-          target: wasm32-unknown-unknown,x86_64-apple-ios,x86_64-linux-android
+          target: x86_64-apple-ios,x86_64-linux-android
           rustflags: ""
 
       - name: Cache Rust
@@ -64,9 +64,6 @@ jobs:
       - name: Cargo lint
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Dioxus check web
-        run: dx check --package web --platform web --locked
-
       - name: Dioxus check Linux
         run: dx check --package desktop --platform linux --locked
 
@@ -84,6 +81,3 @@ jobs:
 
       - name: Cargo test
         run: cargo test --workspace --locked
-
-      - name: Build web
-        run: dx build --package web --platform web --locked
