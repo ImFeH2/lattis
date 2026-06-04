@@ -1,0 +1,75 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: Cargo format
+        entry: cargo fmt --all
+        language: system
+        pass_filenames: false
+        types_or: [rust, toml]
+
+      - id: dx-fmt
+        name: Dioxus format
+        entry: dx fmt
+        language: system
+        pass_filenames: false
+        types_or: [rust]
+
+      - id: cargo-clippy
+        name: Cargo lint
+        entry: cargo clippy --workspace --all-targets -- -D warnings
+        language: system
+        pass_filenames: false
+        types_or: [rust, toml]
+
+      - id: dx-check-web
+        name: Dioxus check web
+        entry: dx check --package web --platform web
+        language: system
+        pass_filenames: false
+
+      - id: dx-check-linux
+        name: Dioxus check Linux
+        entry: dx check --package desktop --platform linux
+        language: system
+        pass_filenames: false
+
+      - id: dx-check-macos
+        name: Dioxus check macOS
+        entry: dx check --package desktop --platform macos
+        language: system
+        pass_filenames: false
+
+      - id: dx-check-windows
+        name: Dioxus check Windows
+        entry: dx check --package desktop --platform windows
+        language: system
+        pass_filenames: false
+
+      - id: dx-check-android
+        name: Dioxus check Android
+        entry: dx check --package mobile --platform android
+        language: system
+        pass_filenames: false
+
+      - id: dx-check-ios
+        name: Dioxus check iOS
+        entry: dx check --package mobile --platform ios
+        language: system
+        pass_filenames: false
+
+      - id: cargo-test
+        name: Cargo test
+        entry: cargo test --workspace
+        language: system
+        pass_filenames: false
+        types_or: [rust, toml]
