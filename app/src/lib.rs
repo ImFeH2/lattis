@@ -19,6 +19,7 @@ pub enum Route {
 #[component]
 pub fn App() -> Element {
     rsx! {
+        document::Title { "Lattis" }
         document::Stylesheet { href: APP_CSS }
         Router::<Route> {}
     }
