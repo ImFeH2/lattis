@@ -16,7 +16,7 @@ impl NetworkNamespaceGuard {
 
         NetworkNamespace::add(name.clone())
             .await
-            .with_context(|| format!("Failed to add network namespace: {}", name))?;
+            .with_context(|| format!("failed to add network namespace: {}", name))?;
 
         let ns_path = Path::new(NETNS_PATH).join(&name);
         let ns_file = File::open(&ns_path)?;
@@ -69,8 +69,13 @@ impl NetworkNamespaceGuard {
 impl Drop for NetworkNamespaceGuard {
     fn drop(&mut self) {
         let ns_path = Path::new(NETNS_PATH).join(&self.name);
-        let _ = nix::mount::umount2(&ns_path, nix::mount::MntFlags::MNT_DETACH);
-        let _ = nix::unistd::unlink(&ns_path);
+
+        if let Err(err) = nix::mount::umount2(&ns_path, nix::mount::MntFlags::MNT_DETACH) {
+            eprintln!("failed to unmount network namespace: {}", err);
+        }
+        if let Err(err) = nix::unistd::unlink(&ns_path) {
+            eprintln!("failed to remove network namespace: {}", err);
+        }
     }
 }
 
@@ -80,6 +85,11 @@ struct NetworkNamespaceContext {
 
 impl Drop for NetworkNamespaceContext {
     fn drop(&mut self) {
-        let _ = setns(&self.last, CloneFlags::CLONE_NEWNET);
+        if let Err(err) = setns(&self.last, CloneFlags::CLONE_NEWNET) {
+            eprintln!(
+                "failed to switch back to original network namespace: {}",
+                err
+            );
+        }
     }
 }

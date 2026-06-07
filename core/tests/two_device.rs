@@ -11,7 +11,7 @@ async fn find_link_index(handle: &rtnetlink::Handle, name: &str) -> Result<u32> 
     let link = links
         .try_next()
         .await?
-        .context(format!("Failed to find link: {}", name))?;
+        .context(format!("failed to find link: {}", name))?;
     Ok(link.header.index)
 }
 
