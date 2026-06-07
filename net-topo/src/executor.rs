@@ -232,3 +232,18 @@ impl<T> HostTask<T> {
             .context("host task stopped before returning result")?
     }
 }
+
+impl<T> Future for HostTask<T> {
+    type Output = Result<T>;
+
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        std::pin::Pin::new(&mut self.result).poll(cx).map(|result| {
+            result
+                .context("host task stopped before returning result")
+                .and_then(|res| res)
+        })
+    }
+}

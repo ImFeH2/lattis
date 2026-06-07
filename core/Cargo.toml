@@ -13,5 +13,12 @@ anyhow = "1"
 if-addrs = "0.15"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt", "macros"] }
+tokio = { version = "1", features = [
+    "rt",
+    "rt-multi-thread",
+    "macros",
+    "net",
+    "sync",
+    "time",
+] }
 net-topo = { workspace = true }
