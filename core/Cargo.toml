@@ -13,11 +13,5 @@ anyhow = "1"
 if-addrs = "0.15"
 
 [dev-dependencies]
-futures-util = "0.3"
-nix = { version = "0.30", default-features = false, features = [
-    "sched",
-    "mount",
-    "fs",
-] }
-rtnetlink = "0.21"
 tokio = { version = "1", features = ["rt", "macros"] }
+net-topo = { workspace = true }
