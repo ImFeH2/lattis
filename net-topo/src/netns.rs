@@ -1,14 +1,18 @@
 use anyhow::{Context, Result};
+use nix::sched::{CloneFlags, setns};
 use rtnetlink::NETNS_PATH;
 use std::fs::File;
 use std::os::fd::{AsRawFd, RawFd};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+const THREAD_SELF_NS_PATH: &str = "/proc/thread-self/ns/net";
 
 #[derive(Debug)]
 pub struct NetworkNamespace {
     pub(crate) name: String,
     path: PathBuf,
-    file: File,
+    file: Arc<File>,
 }
 
 impl NetworkNamespace {
@@ -25,7 +29,7 @@ impl NetworkNamespace {
         Ok(Self {
             name,
             path: ns_path,
-            file: ns_file,
+            file: Arc::new(ns_file),
         })
     }
 
@@ -33,10 +37,10 @@ impl NetworkNamespace {
         self.file.as_raw_fd()
     }
 
-    pub(crate) fn try_clone_file(&self) -> Result<File> {
-        self.file
-            .try_clone()
-            .context("failed to clone network namespace file")
+    pub(crate) fn handle(&self) -> NetworkNamespaceHandle {
+        NetworkNamespaceHandle {
+            file: Arc::clone(&self.file),
+        }
     }
 }
 
@@ -47,6 +51,56 @@ impl Drop for NetworkNamespace {
         }
         if let Err(err) = nix::unistd::unlink(&self.path) {
             eprintln!("failed to remove network namespace {}: {}", self.name, err);
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct NetworkNamespaceHandle {
+    file: Arc<File>,
+}
+
+impl NetworkNamespaceHandle {
+    pub(crate) fn enter(&self) -> Result<NetworkNamespaceContext> {
+        NetworkNamespaceContext::enter(&self.file)
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct NetworkNamespaceContext {
+    original: Option<File>,
+}
+
+impl NetworkNamespaceContext {
+    fn enter(namespace_file: &File) -> Result<Self> {
+        let original = File::open(THREAD_SELF_NS_PATH)
+            .context("failed to open current thread network namespace")?;
+
+        setns(namespace_file, CloneFlags::CLONE_NEWNET)
+            .context("failed to enter network namespace")?;
+
+        Ok(Self {
+            original: Some(original),
+        })
+    }
+
+    pub(crate) fn restore(mut self) -> Result<()> {
+        if let Some(original) = self.original.as_ref() {
+            setns(original, CloneFlags::CLONE_NEWNET)
+                .context("failed to restore original network namespace")?;
+        }
+
+        self.original.take();
+        Ok(())
+    }
+}
+
+impl Drop for NetworkNamespaceContext {
+    fn drop(&mut self) {
+        if let Some(original) = self.original.as_ref()
+            && let Err(err) = setns(original, CloneFlags::CLONE_NEWNET)
+        {
+            eprintln!("failed to restore original network namespace: {}", err);
         }
     }
 }

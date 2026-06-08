@@ -82,12 +82,12 @@ impl Host {
         self.node.executor.run(f).await
     }
 
-    pub async fn run_blocking<T, F>(&self, f: F) -> Result<T>
+    pub fn spawn_blocking<T, F>(&self, f: F) -> Result<HostTask<T>>
     where
         T: Send + 'static,
         F: FnOnce() -> Result<T> + Send + 'static,
     {
-        self.node.executor.run_blocking(f).await
+        self.node.executor.spawn_blocking(f)
     }
 }
 

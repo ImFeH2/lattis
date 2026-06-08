@@ -67,17 +67,17 @@ async fn two_device_direct_link() -> Result<()> {
         .await?;
 
     host1
-        .run_blocking(|| {
+        .spawn_blocking(|| {
             lattis_core::print_info()?;
             Ok(())
-        })
+        })?
         .await?;
 
     host2
-        .run_blocking(|| {
+        .spawn_blocking(|| {
             lattis_core::print_info()?;
             Ok(())
-        })
+        })?
         .await?;
 
     let host1_socket: SocketAddr = format!("{host1_ip}:8000").parse()?;
