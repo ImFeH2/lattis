@@ -3,7 +3,7 @@ resolver = "2"
 members = ["app", "core", "desktop", "mobile", "net-topo"]
 
 [workspace.package]
-version = "0.1.4"
+version = "0.0.1"
 edition = "2024"
 authors = ["ImFeH2 <i@feh2.im>"]
 description = "A connected space where your devices can work together."

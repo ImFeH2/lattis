@@ -682,7 +682,7 @@ dependencies = [
 
 [[package]]
 name = "desktop"
-version = "0.1.4"
+version = "0.0.1"
 dependencies = [
  "dioxus",
  "lattis",
@@ -2312,7 +2312,7 @@ dependencies = [
 
 [[package]]
 name = "lattis"
-version = "0.1.4"
+version = "0.0.1"
 dependencies = [
  "dioxus",
  "lattis-core",
@@ -2320,7 +2320,7 @@ dependencies = [
 
 [[package]]
 name = "lattis-core"
-version = "0.1.4"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "if-addrs",
@@ -2658,7 +2658,7 @@ dependencies = [
 
 [[package]]
 name = "mobile"
-version = "0.1.4"
+version = "0.0.1"
 dependencies = [
  "dioxus",
  "lattis",
@@ -2744,7 +2744,7 @@ dependencies = [
 
 [[package]]
 name = "net-topo"
-version = "0.1.4"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "futures-util",
