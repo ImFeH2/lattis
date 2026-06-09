@@ -5,8 +5,18 @@ use std::fs::File;
 use std::os::fd::{AsRawFd, RawFd};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 
 const THREAD_SELF_NS_PATH: &str = "/proc/thread-self/ns/net";
+
+static NETNS_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+fn unique_netns_name(label: &str) -> String {
+    let id = NETNS_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let pid = std::process::id();
+
+    format!("net-topo-{}-{}-{}", label, pid, id)
+}
 
 #[derive(Debug)]
 pub struct NetworkNamespace {
@@ -17,7 +27,7 @@ pub struct NetworkNamespace {
 
 impl NetworkNamespace {
     pub(crate) async fn new(name: &str) -> Result<Self> {
-        let name = name.to_string();
+        let name = unique_netns_name(name);
 
         rtnetlink::NetworkNamespace::add(name.clone())
             .await

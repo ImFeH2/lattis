@@ -1,14 +1,32 @@
+pub mod network;
+
+pub use network::{Device, Peer};
+
 use anyhow::Result;
 use if_addrs::get_if_addrs;
 
-pub fn print_info() -> Result<()> {
+pub fn print_iface_info() -> Result<()> {
     let interfaces = get_if_addrs()?;
 
     for iface in interfaces {
         println!("Interface: {}", iface.name);
-        println!("  ip: {}", iface.ip());
-        println!("  loopback: {}", iface.is_loopback());
-        println!("  p2p: {}", iface.is_p2p);
+
+        match &iface.addr {
+            if_addrs::IfAddr::V4(addr) => {
+                println!("  IPv4: {}/{}", addr.ip, addr.prefixlen);
+                println!("  Netmask: {}", addr.netmask);
+                if let Some(broadcast) = addr.broadcast {
+                    println!("  Broadcast: {}", broadcast);
+                }
+            }
+            if_addrs::IfAddr::V6(addr) => {
+                println!("  IPv6: {}/{}", addr.ip, addr.prefixlen);
+                println!("  Netmask: {}", addr.netmask);
+            }
+        }
+
+        println!("  Loopback: {}", iface.is_loopback());
+        println!("  Point-to-Point: {}", iface.is_p2p);
         println!();
     }
 

@@ -17,6 +17,7 @@ pub use crate::executor::{HostTask, RuntimeConfig};
 
 #[derive(Debug)]
 struct Node {
+    label: String,
     executor: NamespaceExecutor,
     namespace: NetworkNamespace,
 }
@@ -54,6 +55,7 @@ impl Host {
 
         Ok(Self {
             node: Arc::new(Node {
+                label: name.to_string(),
                 executor,
                 namespace,
             }),
@@ -61,7 +63,7 @@ impl Host {
     }
 
     pub fn name(&self) -> &str {
-        &self.node.namespace.name
+        &self.node.label
     }
 
     pub fn spawn<T, F, Fut>(&self, f: F) -> Result<HostTask<T>>
