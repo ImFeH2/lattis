@@ -8,6 +8,9 @@ license.workspace = true
 repository.workspace = true
 readme.workspace = true
 
+[features]
+netns-tests = []
+
 [dependencies]
 anyhow = "1"
 etherparse = "0.20"
@@ -25,4 +28,11 @@ tokio = { version = "1", features = [
     "sync",
     "time",
 ] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
 net-topo = { workspace = true }
+
+[[test]]
+name = "two_device"
+path = "tests/two_device.rs"
+required-features = ["netns-tests"]

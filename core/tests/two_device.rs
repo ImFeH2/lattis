@@ -1,3 +1,5 @@
+#![cfg(target_os = "linux")]
+
 use anyhow::Result;
 use ipnet::IpNet;
 use lattis_core::{Device, Peer};
@@ -56,8 +58,6 @@ async fn run_udp_echo_client(bind_addr: SocketAddr, server_addr: SocketAddr) -> 
     Ok(())
 }
 
-#[cfg(target_os = "linux")]
-#[ignore = "requires Linux network namespaces"]
 #[tokio::test]
 async fn two_host_direct_link() -> Result<()> {
     let host1 = Host::new("host1").await?;
@@ -112,8 +112,6 @@ async fn two_host_direct_link() -> Result<()> {
     Ok(())
 }
 
-#[cfg(target_os = "linux")]
-#[ignore = "requires Linux network namespaces"]
 #[tokio::test]
 async fn two_device_direct_link() -> Result<()> {
     let host1 = Host::new("host1").await?;
