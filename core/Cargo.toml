@@ -33,6 +33,6 @@ tokio = { version = "1", features = [
 net-topo = { workspace = true }
 
 [[test]]
-name = "two_device"
-path = "tests/two_device.rs"
+name = "netns"
+path = "tests/netns/mod.rs"
 required-features = ["netns-tests"]

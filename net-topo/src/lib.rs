@@ -1,5 +1,6 @@
 mod executor;
 mod netns;
+pub mod testing;
 
 use std::{
     future::Future,
