@@ -1,6 +1,6 @@
 pub mod network;
 
-pub use network::{Device, Peer};
+pub use network::{Device, Peer, PrivateKey, PublicKey};
 
 use anyhow::Result;
 use if_addrs::get_if_addrs;

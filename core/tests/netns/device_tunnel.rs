@@ -1,10 +1,11 @@
 use anyhow::Result;
 use ipnet::IpNet;
-use lattis_core::{Device, Peer};
+use lattis_core::{Device, Peer, PrivateKey, PublicKey};
 use net_topo::{
     DirectLink, Host,
     testing::{run_udp_echo_client, run_udp_echo_server},
 };
+use rand_core::OsRng;
 use std::net::SocketAddr;
 use tokio::sync::oneshot;
 
@@ -24,6 +25,11 @@ async fn connects_virtual_addresses() -> Result<()> {
 
     let prefix_len = 24;
 
+    let device1_private_key = PrivateKey::random_from_rng(OsRng);
+    let device1_public_key = PublicKey::from(&device1_private_key);
+    let device2_private_key = PrivateKey::random_from_rng(OsRng);
+    let device2_public_key = PublicKey::from(&device2_private_key);
+
     let (iface1, iface2) = DirectLink::connect(&host1, &host2).await?;
 
     iface1
@@ -42,14 +48,16 @@ async fn connects_virtual_addresses() -> Result<()> {
 
     let _device1 = host1
         .run(move || async move {
-            let peer = Peer {
-                allowed_ips: vec![IpNet::new(device2_virtual_ip.parse()?, 32)?],
-                endpoint: format!("{}:{}", host2_ip, device2_listen_port).parse()?,
-            };
+            let peer = Peer::new(
+                device2_public_key,
+                vec![IpNet::new(device2_virtual_ip.parse()?, 32)?],
+                format!("{}:{}", host2_ip, device2_listen_port).parse()?,
+            );
             let local_address = IpNet::new(device1_virtual_ip.parse()?, prefix_len)?;
 
             Device::builder()
                 .listen_port(device1_listen_port)
+                .private_key(device1_private_key)
                 .add_local_address(local_address)
                 .add_peer(peer)
                 .build()
@@ -59,14 +67,16 @@ async fn connects_virtual_addresses() -> Result<()> {
 
     let _device2 = host2
         .run(move || async move {
-            let peer = Peer {
-                allowed_ips: vec![IpNet::new(device1_virtual_ip.parse()?, 32)?],
-                endpoint: format!("{}:{}", host1_ip, device1_listen_port).parse()?,
-            };
+            let peer = Peer::new(
+                device1_public_key,
+                vec![IpNet::new(device1_virtual_ip.parse()?, 32)?],
+                format!("{}:{}", host1_ip, device1_listen_port).parse()?,
+            );
             let local_address = IpNet::new(device2_virtual_ip.parse()?, prefix_len)?;
 
             Device::builder()
                 .listen_port(device2_listen_port)
+                .private_key(device2_private_key)
                 .add_local_address(local_address)
                 .add_peer(peer)
                 .build()
