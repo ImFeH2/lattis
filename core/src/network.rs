@@ -37,20 +37,20 @@ impl Device {
     async fn start(
         interface_name: String,
         listen_port: u16,
-        local: DeviceConfig,
+        config: DeviceConfig,
         peers: Vec<Peer>,
     ) -> Result<Self> {
         if peers.is_empty() {
             bail!("At least one peer must be configured");
         }
 
-        if local.addresses.is_empty() {
-            bail!("At least one local address must be configured");
+        if config.addresses.is_empty() {
+            bail!("At least one virtual address must be configured");
         }
 
         let builder = tun_rs::DeviceBuilder::new().name(interface_name);
         let tun = builder.build_async()?;
-        for addr in &local.addresses {
+        for addr in &config.addresses {
             match addr {
                 IpNet::V4(address) => tun.add_address_v4(address.addr(), address.prefix_len())?,
                 IpNet::V6(address) => tun.add_address_v6(address.addr(), address.prefix_len())?,
@@ -65,7 +65,7 @@ impl Device {
             .enumerate()
             .map(|(index, p)| {
                 WireGuardPeer::new(
-                    local.private_key.clone(),
+                    config.private_key.clone(),
                     p.public_key,
                     p.allowed_ips,
                     p.endpoint,
@@ -276,7 +276,7 @@ impl DeviceBuilder {
         self
     }
 
-    pub fn add_local_address(mut self, address: IpNet) -> Self {
+    pub fn add_virtual_address(mut self, address: IpNet) -> Self {
         self.config.addresses.push(address);
         self
     }
