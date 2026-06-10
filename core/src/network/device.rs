@@ -3,6 +3,7 @@ use boringtun::noise::{Packet, Tunn, TunnResult};
 use etherparse::IpSlice;
 use ipnet::IpNet;
 use std::{
+    collections::{HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{
         Arc, Mutex, RwLock,
@@ -23,6 +24,7 @@ const WIREGUARD_PACKET_BUFFER_SIZE: usize = MTU + WIREGUARD_OVERHEAD;
 const WIREGUARD_TIMER_INTERVAL: Duration = Duration::from_millis(250);
 const WIREGUARD_HANDSHAKE_RESPONSE: u32 = 2;
 const WIREGUARD_HANDSHAKE_RESPONSE_SIZE: usize = 92;
+type PeerKey = [u8; 32];
 
 pub struct Device {
     state: Arc<DeviceState>,
@@ -257,7 +259,7 @@ struct DeviceState {
 
 #[derive(Default)]
 struct PeerTable {
-    peers: Vec<Arc<Peer>>,
+    peers: HashMap<PeerKey, Arc<Peer>>,
 }
 
 impl Peer {
@@ -307,10 +309,6 @@ impl Peer {
         self.update_endpoint(peer.endpoint)
     }
 
-    fn public_key_matches(&self, public_key: &PublicKey) -> bool {
-        self.public_key.to_bytes() == public_key.to_bytes()
-    }
-
     fn allows_ip(&self, address: IpAddr) -> Result<bool> {
         let allowed_ips = self
             .allowed_ips
@@ -336,13 +334,11 @@ impl DeviceState {
             .write()
             .map_err(|_| anyhow!("WireGuard peer table lock error"))?;
 
-        ensure!(
-            !peers.contains_public_key(&peer.public_key),
-            "WireGuard peer already exists"
-        );
+        let key = peer_key(&peer.public_key);
+        ensure!(!peers.contains_key(&key), "WireGuard peer already exists");
 
         let index = self.next_peer_index.fetch_add(1, Ordering::Relaxed);
-        peers.peers.push(Arc::new(Peer::new(
+        peers.insert(Arc::new(Peer::new(
             self.private_key.clone(),
             peer.public_key,
             peer.allowed_ips,
@@ -354,27 +350,24 @@ impl DeviceState {
     }
 
     fn apply_peers(&self, target_peers: Vec<PeerConfig>) -> Result<()> {
-        ensure_unique_peer_configs(&target_peers)?;
+        let target_keys = peer_config_keys(&target_peers)?;
 
         let mut peers = self
             .peers
             .write()
             .map_err(|_| anyhow!("WireGuard peer table lock error"))?;
 
-        peers.peers.retain(|peer| {
-            target_peers
-                .iter()
-                .any(|target_peer| target_peer.public_key_matches(&peer.public_key))
-        });
+        peers.retain_keys(&target_keys);
 
         for target_peer in target_peers {
-            if let Some(peer) = peers.find_by_public_key(&target_peer.public_key) {
+            let key = peer_key(&target_peer.public_key);
+            if let Some(peer) = peers.find_by_key(&key) {
                 peer.update_config(target_peer)?;
                 continue;
             }
 
             let index = self.next_peer_index.fetch_add(1, Ordering::Relaxed);
-            peers.peers.push(Arc::new(Peer::new(
+            peers.insert(Arc::new(Peer::new(
                 self.private_key.clone(),
                 target_peer.public_key,
                 target_peer.allowed_ips,
@@ -392,15 +385,8 @@ impl DeviceState {
             .write()
             .map_err(|_| anyhow!("WireGuard peer table lock error"))?;
 
-        let original_len = peers.peers.len();
-        peers
-            .peers
-            .retain(|peer| !peer.public_key_matches(public_key));
-
-        ensure!(
-            peers.peers.len() != original_len,
-            "WireGuard peer does not exist"
-        );
+        let peer = peers.remove(public_key);
+        ensure!(peer.is_some(), "WireGuard peer does not exist");
 
         Ok(())
     }
@@ -469,21 +455,32 @@ impl DeviceState {
 }
 
 impl PeerTable {
-    fn contains_public_key(&self, public_key: &PublicKey) -> bool {
-        self.peers
-            .iter()
-            .any(|peer| peer.public_key_matches(public_key))
+    fn contains_key(&self, key: &PeerKey) -> bool {
+        self.peers.contains_key(key)
+    }
+
+    fn insert(&mut self, peer: Arc<Peer>) {
+        self.peers.insert(peer_key(&peer.public_key), peer);
+    }
+
+    fn remove(&mut self, public_key: &PublicKey) -> Option<Arc<Peer>> {
+        self.peers.remove(&peer_key(public_key))
+    }
+
+    fn retain_keys(&mut self, keys: &HashSet<PeerKey>) {
+        self.peers.retain(|key, _| keys.contains(key));
+    }
+
+    fn find_by_key(&self, key: &PeerKey) -> Option<Arc<Peer>> {
+        self.peers.get(key).cloned()
     }
 
     fn find_by_public_key(&self, public_key: &PublicKey) -> Option<Arc<Peer>> {
-        self.peers
-            .iter()
-            .find(|peer| peer.public_key_matches(public_key))
-            .cloned()
+        self.peers.get(&peer_key(public_key)).cloned()
     }
 
     fn find_by_destination(&self, dst: IpAddr) -> Result<Option<Arc<Peer>>> {
-        for peer in &self.peers {
+        for peer in self.peers.values() {
             if peer.allows_ip(dst)? {
                 return Ok(Some(peer.clone()));
             }
@@ -493,7 +490,7 @@ impl PeerTable {
     }
 
     fn find_by_endpoint(&self, endpoint: SocketAddr) -> Result<Option<Arc<Peer>>> {
-        for peer in &self.peers {
+        for peer in self.peers.values() {
             if peer.endpoint()? == endpoint {
                 return Ok(Some(peer.clone()));
             }
@@ -503,25 +500,32 @@ impl PeerTable {
     }
 
     fn find_by_index(&self, index: u32) -> Option<Arc<Peer>> {
-        self.peers.iter().find(|peer| peer.index == index).cloned()
+        self.peers
+            .values()
+            .find(|peer| peer.index == index)
+            .cloned()
     }
 
     fn all(&self) -> Vec<Arc<Peer>> {
-        self.peers.clone()
+        self.peers.values().cloned().collect()
     }
 }
 
-fn ensure_unique_peer_configs(peers: &[PeerConfig]) -> Result<()> {
-    for (index, peer) in peers.iter().enumerate() {
+fn peer_config_keys(peers: &[PeerConfig]) -> Result<HashSet<PeerKey>> {
+    let mut keys = HashSet::with_capacity(peers.len());
+
+    for peer in peers {
         ensure!(
-            !peers[index + 1..]
-                .iter()
-                .any(|other| other.public_key_matches(&peer.public_key)),
+            keys.insert(peer_key(&peer.public_key)),
             "Duplicate WireGuard peer"
         );
     }
 
-    Ok(())
+    Ok(keys)
+}
+
+fn peer_key(public_key: &PublicKey) -> PeerKey {
+    public_key.to_bytes()
 }
 
 enum EndpointUpdate {

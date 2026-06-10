@@ -22,10 +22,6 @@ impl PeerConfig {
             endpoint,
         }
     }
-
-    pub(super) fn public_key_matches(&self, public_key: &PublicKey) -> bool {
-        self.public_key.to_bytes() == public_key.to_bytes()
-    }
 }
 
 pub struct DeviceConfig {
