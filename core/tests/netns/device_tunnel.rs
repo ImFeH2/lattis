@@ -459,6 +459,60 @@ async fn drops_unallowed_virtual_address() -> Result<()> {
 }
 
 #[tokio::test]
+async fn drops_authenticated_packet_from_unallowed_source() -> Result<()> {
+    let (host1, host2) = connected_hosts().await?;
+    let (device1_private_key, device1_public_key) = key_pair();
+    let (device2_private_key, device2_public_key) = key_pair();
+
+    let device1 = host1
+        .run(move || async move {
+            let virtual_address = IpNet::new(UNALLOWED_VIRTUAL_IP.parse()?, PREFIX_LEN)?;
+
+            Device::builder()
+                .private_key(device1_private_key)
+                .add_virtual_address(virtual_address)
+                .build()
+                .await
+        })
+        .await?;
+
+    let device2 = host2
+        .run(move || async move {
+            let virtual_address = IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, PREFIX_LEN)?;
+
+            Device::builder()
+                .private_key(device2_private_key)
+                .add_virtual_address(virtual_address)
+                .build()
+                .await
+        })
+        .await?;
+
+    device1.add_peer(Peer::new(
+        device2_public_key,
+        vec![IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, 32)?],
+        socket_addr(HOST2_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
+    ))?;
+    device2.add_peer(Peer::new(
+        device1_public_key,
+        vec![IpNet::new(DEVICE1_VIRTUAL_IP.parse()?, 32)?],
+        socket_addr(HOST1_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
+    ))?;
+
+    assert_udp_echo_fails(
+        &host1,
+        &host2,
+        socket_addr(UNALLOWED_VIRTUAL_IP, DEVICE1_MSG_PORT)?,
+        socket_addr(DEVICE2_VIRTUAL_IP, DEVICE2_MSG_PORT)?,
+        socket_addr(DEVICE2_VIRTUAL_IP, DEVICE2_MSG_PORT)?,
+        "UDP echo unexpectedly succeeded from an unallowed virtual source",
+    )
+    .await?;
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn does_not_echo_to_wrong_udp_port() -> Result<()> {
     let (host1, host2) = connected_hosts().await?;
     let (device1_private_key, device1_public_key) = key_pair();

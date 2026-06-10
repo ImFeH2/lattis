@@ -293,6 +293,10 @@ impl WireGuardPeer {
     fn public_key_matches(&self, public_key: &PublicKey) -> bool {
         self.public_key.to_bytes() == public_key.to_bytes()
     }
+
+    fn allows_source(&self, source: IpAddr) -> bool {
+        self.allowed_ips.iter().any(|net| net.contains(&source))
+    }
 }
 
 impl DeviceState {
@@ -492,7 +496,7 @@ async fn handle_peer_datagram(
         peer.update_endpoint(src)?;
     }
 
-    handle_tunn_result(result, tun, socket, src, "inbound").await?;
+    handle_tunn_result(&peer, result, tun, socket, src, "inbound").await?;
     drain_peer(peer, tun, socket, src).await?;
 
     Ok(true)
@@ -516,7 +520,7 @@ async fn drain_peer(
         };
 
         let done = matches!(result, TunnResult::Done | TunnResult::Err(_));
-        handle_tunn_result(result, tun, socket, endpoint, "drain").await?;
+        handle_tunn_result(&peer, result, tun, socket, endpoint, "drain").await?;
 
         if done {
             break;
@@ -527,6 +531,7 @@ async fn drain_peer(
 }
 
 async fn handle_tunn_result(
+    peer: &WireGuardPeer,
     result: TunnResult<'_>,
     tun: &tun_rs::AsyncDevice,
     socket: &UdpSocket,
@@ -537,8 +542,27 @@ async fn handle_tunn_result(
         TunnResult::WriteToNetwork(packet) => {
             socket.send_to(packet, endpoint).await?;
         }
-        TunnResult::WriteToTunnelV4(packet, _) | TunnResult::WriteToTunnelV6(packet, _) => {
-            tun.send(packet).await?;
+        TunnResult::WriteToTunnelV4(packet, source) => {
+            let source = IpAddr::V4(source);
+            if peer.allows_source(source) {
+                tun.send(packet).await?;
+            } else {
+                eprintln!(
+                    "Dropped WireGuard packet from unauthorized source {}",
+                    source
+                );
+            }
+        }
+        TunnResult::WriteToTunnelV6(packet, source) => {
+            let source = IpAddr::V6(source);
+            if peer.allows_source(source) {
+                tun.send(packet).await?;
+            } else {
+                eprintln!(
+                    "Dropped WireGuard packet from unauthorized source {}",
+                    source
+                );
+            }
         }
         TunnResult::Done => {}
         TunnResult::Err(err) => {
