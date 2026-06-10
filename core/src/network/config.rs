@@ -22,6 +22,14 @@ impl PeerConfig {
             endpoint,
         }
     }
+
+    pub fn from_identity(identity: &DeviceIdentity, endpoint: SocketAddr) -> Self {
+        Self {
+            public_key: identity.public_key,
+            allowed_ips: identity.virtual_addresses.clone(),
+            endpoint,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

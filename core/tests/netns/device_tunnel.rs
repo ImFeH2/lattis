@@ -110,6 +110,56 @@ async fn connects_virtual_addresses() -> Result<()> {
 }
 
 #[tokio::test]
+async fn connects_using_device_identities() -> Result<()> {
+    let (host1, host2) = connected_hosts().await?;
+    let (device1_private_key, _) = key_pair();
+    let (device2_private_key, _) = key_pair();
+
+    let device1 = host1
+        .run(move || async move {
+            let virtual_address = IpNet::new(DEVICE1_VIRTUAL_IP.parse()?, PREFIX_LEN)?;
+
+            Device::builder()
+                .private_key(device1_private_key)
+                .add_virtual_address(virtual_address)
+                .build()
+                .await
+        })
+        .await?;
+
+    let device2 = host2
+        .run(move || async move {
+            let virtual_address = IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, PREFIX_LEN)?;
+
+            Device::builder()
+                .private_key(device2_private_key)
+                .add_virtual_address(virtual_address)
+                .build()
+                .await
+        })
+        .await?;
+
+    device1.apply_peers(vec![PeerConfig::from_identity(
+        &device2.identity(),
+        socket_addr(HOST2_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
+    )])?;
+    device2.apply_peers(vec![PeerConfig::from_identity(
+        &device1.identity(),
+        socket_addr(HOST1_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
+    )])?;
+
+    assert_udp_echo_succeeds(
+        &host1,
+        &host2,
+        socket_addr(DEVICE1_VIRTUAL_IP, DEVICE1_MSG_PORT)?,
+        socket_addr(DEVICE2_VIRTUAL_IP, DEVICE2_MSG_PORT)?,
+    )
+    .await?;
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn connects_after_applying_peers_at_runtime() -> Result<()> {
     let (host1, host2) = connected_hosts().await?;
     let (device1_private_key, device1_public_key) = key_pair();
