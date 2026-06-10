@@ -11,7 +11,7 @@ use std::{
 use tokio::{net::UdpSocket, task::JoinHandle};
 
 const DEFAULT_INTERFACE_NAME: &str = "lattis0";
-const DEFAULT_LISTEN_PORT: u16 = 8000;
+const DEFAULT_LISTEN_PORT: u16 = 52171;
 const MTU: usize = 1500;
 const WIREGUARD_OVERHEAD: usize = 32;
 const WIREGUARD_PACKET_BUFFER_SIZE: usize = MTU + WIREGUARD_OVERHEAD;
