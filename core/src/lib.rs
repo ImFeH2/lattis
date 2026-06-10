@@ -1,6 +1,8 @@
 pub mod network;
 
-pub use network::{DEFAULT_DEVICE_LISTEN_PORT, Device, PeerConfig, PrivateKey, PublicKey};
+pub use network::{
+    DEFAULT_DEVICE_LISTEN_PORT, Device, DeviceIdentity, PeerConfig, PrivateKey, PublicKey,
+};
 
 use anyhow::Result;
 use if_addrs::get_if_addrs;

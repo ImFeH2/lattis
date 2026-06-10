@@ -2,5 +2,7 @@ mod config;
 mod device;
 
 pub use boringtun::x25519::{PublicKey, StaticSecret as PrivateKey};
-pub use config::{DEFAULT_DEVICE_LISTEN_PORT, DeviceBuilder, DeviceConfig, PeerConfig};
+pub use config::{
+    DEFAULT_DEVICE_LISTEN_PORT, DeviceBuilder, DeviceConfig, DeviceIdentity, PeerConfig,
+};
 pub use device::Device;

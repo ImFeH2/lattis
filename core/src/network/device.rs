@@ -16,7 +16,7 @@ use tokio::{
     time::{Duration, interval},
 };
 
-use super::{DeviceConfig, PeerConfig, PrivateKey, PublicKey};
+use super::{DeviceConfig, DeviceIdentity, PeerConfig, PrivateKey, PublicKey};
 
 const MTU: usize = 1500;
 const WIREGUARD_OVERHEAD: usize = 32;
@@ -39,13 +39,13 @@ impl Device {
         listen_port: u16,
         config: DeviceConfig,
     ) -> Result<Self> {
-        if config.addresses.is_empty() {
+        if config.virtual_addresses.is_empty() {
             bail!("At least one virtual address must be configured");
         }
 
         let builder = tun_rs::DeviceBuilder::new().name(interface_name);
         let tun = builder.build_async()?;
-        for addr in &config.addresses {
+        for addr in &config.virtual_addresses {
             match addr {
                 IpNet::V4(address) => tun.add_address_v4(address.addr(), address.prefix_len())?,
                 IpNet::V6(address) => tun.add_address_v6(address.addr(), address.prefix_len())?,
@@ -55,7 +55,10 @@ impl Device {
         let socket_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), listen_port);
         let socket = UdpSocket::bind(&socket_address).await?;
 
-        let state = Arc::new(DeviceState::new(config.private_key));
+        let state = Arc::new(DeviceState::new(
+            config.private_key,
+            config.virtual_addresses,
+        ));
         let tun = Arc::new(tun);
         let socket = Arc::new(socket);
 
@@ -233,6 +236,10 @@ impl Device {
     pub fn apply_peers(&self, peers: Vec<PeerConfig>) -> Result<()> {
         self.state.apply_peers(peers)
     }
+
+    pub fn identity(&self) -> DeviceIdentity {
+        self.state.identity()
+    }
 }
 
 impl Drop for Device {
@@ -253,6 +260,7 @@ struct Peer {
 
 struct DeviceState {
     private_key: PrivateKey,
+    identity: DeviceIdentity,
     peers: RwLock<PeerTable>,
     next_peer_index: AtomicU32,
 }
@@ -320,12 +328,22 @@ impl Peer {
 }
 
 impl DeviceState {
-    fn new(private_key: PrivateKey) -> Self {
+    fn new(private_key: PrivateKey, virtual_addresses: Vec<IpNet>) -> Self {
+        let public_key = PublicKey::from(&private_key);
+
         Self {
             private_key,
+            identity: DeviceIdentity {
+                public_key,
+                virtual_addresses,
+            },
             peers: RwLock::new(PeerTable::default()),
             next_peer_index: AtomicU32::new(1),
         }
+    }
+
+    fn identity(&self) -> DeviceIdentity {
+        self.identity.clone()
     }
 
     fn add_peer(&self, peer: PeerConfig) -> Result<()> {

@@ -24,9 +24,15 @@ impl PeerConfig {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeviceIdentity {
+    pub public_key: PublicKey,
+    pub virtual_addresses: Vec<IpNet>,
+}
+
 pub struct DeviceConfig {
     pub private_key: PrivateKey,
-    pub addresses: Vec<IpNet>,
+    pub virtual_addresses: Vec<IpNet>,
 }
 
 pub struct DeviceBuilder {
@@ -42,7 +48,7 @@ impl Device {
             listen_port: DEFAULT_DEVICE_LISTEN_PORT,
             config: DeviceConfig {
                 private_key: PrivateKey::random_from_rng(OsRng),
-                addresses: vec![],
+                virtual_addresses: vec![],
             },
         }
     }
@@ -65,7 +71,7 @@ impl DeviceBuilder {
     }
 
     pub fn add_virtual_address(mut self, address: IpNet) -> Self {
-        self.config.addresses.push(address);
+        self.config.virtual_addresses.push(address);
         self
     }
 

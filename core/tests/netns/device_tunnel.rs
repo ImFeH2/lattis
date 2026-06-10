@@ -29,6 +29,35 @@ const TEST_TIMEOUT: Duration = Duration::from_secs(3);
 const HANDSHAKE_RETRY_TEST_TIMEOUT: Duration = Duration::from_secs(7);
 
 #[tokio::test]
+async fn reports_device_identity() -> Result<()> {
+    let host = Host::new("host").await?;
+    let (private_key, public_key) = key_pair();
+    let virtual_address = IpNet::new(DEVICE1_VIRTUAL_IP.parse()?, PREFIX_LEN)?;
+
+    let device = host
+        .run(move || async move {
+            Device::builder()
+                .private_key(private_key)
+                .add_virtual_address(virtual_address)
+                .build()
+                .await
+        })
+        .await?;
+
+    let identity = device.identity();
+    ensure!(
+        identity.public_key == public_key,
+        "device identity returned the wrong public key"
+    );
+    ensure!(
+        identity.virtual_addresses == vec![virtual_address],
+        "device identity returned the wrong virtual addresses"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn connects_virtual_addresses() -> Result<()> {
     let (host1, host2) = connected_hosts().await?;
     let (device1_private_key, device1_public_key) = key_pair();
