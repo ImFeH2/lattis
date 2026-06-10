@@ -8,19 +8,23 @@ use super::{Device, PrivateKey, PublicKey};
 const DEFAULT_INTERFACE_NAME: &str = "lattis0";
 pub const DEFAULT_DEVICE_LISTEN_PORT: u16 = 52171;
 
-pub struct Peer {
+pub struct PeerConfig {
     pub(super) public_key: PublicKey,
     pub(super) allowed_ips: Vec<IpNet>,
     pub(super) endpoint: SocketAddr,
 }
 
-impl Peer {
+impl PeerConfig {
     pub fn new(public_key: PublicKey, allowed_ips: Vec<IpNet>, endpoint: SocketAddr) -> Self {
         Self {
             public_key,
             allowed_ips,
             endpoint,
         }
+    }
+
+    pub(super) fn public_key_matches(&self, public_key: &PublicKey) -> bool {
+        self.public_key.to_bytes() == public_key.to_bytes()
     }
 }
 

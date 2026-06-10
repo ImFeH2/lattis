@@ -1,6 +1,6 @@
 use anyhow::{Result, ensure};
 use ipnet::IpNet;
-use lattis_core::{DEFAULT_DEVICE_LISTEN_PORT, Device, Peer, PrivateKey, PublicKey};
+use lattis_core::{DEFAULT_DEVICE_LISTEN_PORT, Device, PeerConfig, PrivateKey, PublicKey};
 use net_topo::{
     DirectLink, Host,
     testing::{run_udp_echo_client, run_udp_echo_server},
@@ -58,12 +58,12 @@ async fn connects_virtual_addresses() -> Result<()> {
         })
         .await?;
 
-    device1.add_peer(Peer::new(
+    device1.add_peer(PeerConfig::new(
         device2_public_key,
         vec![IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, 32)?],
         socket_addr(HOST2_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
     ))?;
-    device2.add_peer(Peer::new(
+    device2.add_peer(PeerConfig::new(
         device1_public_key,
         vec![IpNet::new(DEVICE1_VIRTUAL_IP.parse()?, 32)?],
         socket_addr(HOST1_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
@@ -81,7 +81,7 @@ async fn connects_virtual_addresses() -> Result<()> {
 }
 
 #[tokio::test]
-async fn connects_after_adding_peers_at_runtime() -> Result<()> {
+async fn connects_after_applying_peers_at_runtime() -> Result<()> {
     let (host1, host2) = connected_hosts().await?;
     let (device1_private_key, device1_public_key) = key_pair();
     let (device2_private_key, device2_public_key) = key_pair();
@@ -110,22 +110,212 @@ async fn connects_after_adding_peers_at_runtime() -> Result<()> {
         })
         .await?;
 
-    device1.add_peer(Peer::new(
+    device1.apply_peers(vec![PeerConfig::new(
         device2_public_key,
         vec![IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, 32)?],
         socket_addr(HOST2_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
-    ))?;
-    device2.add_peer(Peer::new(
+    )])?;
+    device2.apply_peers(vec![PeerConfig::new(
         device1_public_key,
         vec![IpNet::new(DEVICE1_VIRTUAL_IP.parse()?, 32)?],
         socket_addr(HOST1_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
-    ))?;
+    )])?;
 
     assert_udp_echo_succeeds(
         &host1,
         &host2,
         socket_addr(DEVICE1_VIRTUAL_IP, DEVICE1_MSG_PORT)?,
         socket_addr(DEVICE2_VIRTUAL_IP, DEVICE2_MSG_PORT)?,
+    )
+    .await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn connects_after_applying_updated_peer_endpoint() -> Result<()> {
+    let (host1, host2) = connected_hosts().await?;
+    let (device1_private_key, device1_public_key) = key_pair();
+    let (device2_private_key, device2_public_key) = key_pair();
+
+    let device1 = host1
+        .run(move || async move {
+            let virtual_address = IpNet::new(DEVICE1_VIRTUAL_IP.parse()?, PREFIX_LEN)?;
+
+            Device::builder()
+                .private_key(device1_private_key)
+                .add_virtual_address(virtual_address)
+                .build()
+                .await
+        })
+        .await?;
+
+    let device2 = host2
+        .run(move || async move {
+            let virtual_address = IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, PREFIX_LEN)?;
+
+            Device::builder()
+                .private_key(device2_private_key)
+                .add_virtual_address(virtual_address)
+                .build()
+                .await
+        })
+        .await?;
+
+    device1.apply_peers(vec![PeerConfig::new(
+        device2_public_key,
+        vec![IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, 32)?],
+        socket_addr(HOST2_IP, WRONG_DEVICE_LISTEN_PORT)?,
+    )])?;
+    device2.apply_peers(vec![PeerConfig::new(
+        device1_public_key,
+        vec![IpNet::new(DEVICE1_VIRTUAL_IP.parse()?, 32)?],
+        socket_addr(HOST1_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
+    )])?;
+
+    device1.apply_peers(vec![PeerConfig::new(
+        device2_public_key,
+        vec![IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, 32)?],
+        socket_addr(HOST2_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
+    )])?;
+
+    assert_udp_echo_succeeds(
+        &host1,
+        &host2,
+        socket_addr(DEVICE1_VIRTUAL_IP, DEVICE1_MSG_PORT)?,
+        socket_addr(DEVICE2_VIRTUAL_IP, DEVICE2_MSG_PORT)?,
+    )
+    .await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn connects_after_applying_updated_allowed_ips() -> Result<()> {
+    let (host1, host2) = connected_hosts().await?;
+    let (device1_private_key, device1_public_key) = key_pair();
+    let (device2_private_key, device2_public_key) = key_pair();
+
+    let device1 = host1
+        .run(move || async move {
+            let virtual_address = IpNet::new(DEVICE1_VIRTUAL_IP.parse()?, PREFIX_LEN)?;
+
+            Device::builder()
+                .private_key(device1_private_key)
+                .add_virtual_address(virtual_address)
+                .build()
+                .await
+        })
+        .await?;
+
+    let device2 = host2
+        .run(move || async move {
+            let virtual_address = IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, PREFIX_LEN)?;
+
+            Device::builder()
+                .private_key(device2_private_key)
+                .add_virtual_address(virtual_address)
+                .build()
+                .await
+        })
+        .await?;
+
+    device1.apply_peers(vec![PeerConfig::new(
+        device2_public_key,
+        vec![IpNet::new(UNALLOWED_VIRTUAL_IP.parse()?, 32)?],
+        socket_addr(HOST2_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
+    )])?;
+    device2.apply_peers(vec![PeerConfig::new(
+        device1_public_key,
+        vec![IpNet::new(DEVICE1_VIRTUAL_IP.parse()?, 32)?],
+        socket_addr(HOST1_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
+    )])?;
+
+    assert_udp_echo_fails(
+        &host1,
+        &host2,
+        socket_addr(DEVICE1_VIRTUAL_IP, DEVICE1_MSG_PORT)?,
+        socket_addr(DEVICE2_VIRTUAL_IP, DEVICE2_MSG_PORT)?,
+        socket_addr(DEVICE2_VIRTUAL_IP, DEVICE2_MSG_PORT)?,
+        "UDP echo unexpectedly succeeded before applying the allowed IP update",
+    )
+    .await?;
+
+    device1.apply_peers(vec![PeerConfig::new(
+        device2_public_key,
+        vec![IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, 32)?],
+        socket_addr(HOST2_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
+    )])?;
+
+    assert_udp_echo_succeeds(
+        &host1,
+        &host2,
+        socket_addr(DEVICE1_VIRTUAL_IP, DEVICE1_MSG_PORT)?,
+        socket_addr(DEVICE2_VIRTUAL_IP, DEVICE2_MSG_PORT)?,
+    )
+    .await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn disconnects_after_applying_peer_set_without_existing_peer() -> Result<()> {
+    let (host1, host2) = connected_hosts().await?;
+    let (device1_private_key, device1_public_key) = key_pair();
+    let (device2_private_key, device2_public_key) = key_pair();
+
+    let device1 = host1
+        .run(move || async move {
+            let virtual_address = IpNet::new(DEVICE1_VIRTUAL_IP.parse()?, PREFIX_LEN)?;
+
+            Device::builder()
+                .private_key(device1_private_key)
+                .add_virtual_address(virtual_address)
+                .build()
+                .await
+        })
+        .await?;
+
+    let device2 = host2
+        .run(move || async move {
+            let virtual_address = IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, PREFIX_LEN)?;
+
+            Device::builder()
+                .private_key(device2_private_key)
+                .add_virtual_address(virtual_address)
+                .build()
+                .await
+        })
+        .await?;
+
+    device1.apply_peers(vec![PeerConfig::new(
+        device2_public_key,
+        vec![IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, 32)?],
+        socket_addr(HOST2_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
+    )])?;
+    device2.apply_peers(vec![PeerConfig::new(
+        device1_public_key,
+        vec![IpNet::new(DEVICE1_VIRTUAL_IP.parse()?, 32)?],
+        socket_addr(HOST1_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
+    )])?;
+
+    assert_udp_echo_succeeds(
+        &host1,
+        &host2,
+        socket_addr(DEVICE1_VIRTUAL_IP, DEVICE1_MSG_PORT)?,
+        socket_addr(DEVICE2_VIRTUAL_IP, DEVICE2_MSG_PORT)?,
+    )
+    .await?;
+
+    device1.apply_peers(vec![])?;
+
+    assert_udp_echo_fails(
+        &host1,
+        &host2,
+        socket_addr(DEVICE1_VIRTUAL_IP, DEVICE1_MSG_PORT)?,
+        socket_addr(DEVICE2_VIRTUAL_IP, DEVICE2_MSG_PORT)?,
+        socket_addr(DEVICE2_VIRTUAL_IP, DEVICE2_MSG_PORT)?,
+        "UDP echo unexpectedly succeeded after removing the peer",
     )
     .await?;
 
@@ -162,12 +352,12 @@ async fn connects_after_updating_peer_endpoint() -> Result<()> {
         })
         .await?;
 
-    device1.add_peer(Peer::new(
+    device1.add_peer(PeerConfig::new(
         device2_public_key,
         vec![IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, 32)?],
         socket_addr(HOST2_IP, WRONG_DEVICE_LISTEN_PORT)?,
     ))?;
-    device2.add_peer(Peer::new(
+    device2.add_peer(PeerConfig::new(
         device1_public_key,
         vec![IpNet::new(DEVICE1_VIRTUAL_IP.parse()?, 32)?],
         socket_addr(HOST1_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
@@ -220,12 +410,12 @@ async fn learns_peer_endpoint_from_authenticated_packet() -> Result<()> {
         })
         .await?;
 
-    device1.add_peer(Peer::new(
+    device1.add_peer(PeerConfig::new(
         device2_public_key,
         vec![IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, 32)?],
         socket_addr(HOST2_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
     ))?;
-    device2.add_peer(Peer::new(
+    device2.add_peer(PeerConfig::new(
         device1_public_key,
         vec![IpNet::new(DEVICE1_VIRTUAL_IP.parse()?, 32)?],
         socket_addr(HOST1_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
@@ -260,7 +450,7 @@ async fn sends_wireguard_handshake_on_underlay() -> Result<()> {
         })
         .await?;
 
-    device1.add_peer(Peer::new(
+    device1.add_peer(PeerConfig::new(
         device2_public_key,
         vec![IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, 32)?],
         socket_addr(HOST2_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
@@ -301,7 +491,7 @@ async fn retries_wireguard_handshake_on_timer() -> Result<()> {
         })
         .await?;
 
-    device1.add_peer(Peer::new(
+    device1.add_peer(PeerConfig::new(
         device2_public_key,
         vec![IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, 32)?],
         socket_addr(HOST2_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
@@ -380,12 +570,12 @@ async fn rejects_wrong_peer_key() -> Result<()> {
         })
         .await?;
 
-    device1.add_peer(Peer::new(
+    device1.add_peer(PeerConfig::new(
         wrong_device2_public_key,
         vec![IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, 32)?],
         socket_addr(HOST2_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
     ))?;
-    device2.add_peer(Peer::new(
+    device2.add_peer(PeerConfig::new(
         device1_public_key,
         vec![IpNet::new(DEVICE1_VIRTUAL_IP.parse()?, 32)?],
         socket_addr(HOST1_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
@@ -434,12 +624,12 @@ async fn drops_unallowed_virtual_address() -> Result<()> {
         })
         .await?;
 
-    device1.add_peer(Peer::new(
+    device1.add_peer(PeerConfig::new(
         device2_public_key,
         vec![IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, 32)?],
         socket_addr(HOST2_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
     ))?;
-    device2.add_peer(Peer::new(
+    device2.add_peer(PeerConfig::new(
         device1_public_key,
         vec![IpNet::new(DEVICE1_VIRTUAL_IP.parse()?, 32)?],
         socket_addr(HOST1_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
@@ -488,12 +678,12 @@ async fn drops_authenticated_packet_from_unallowed_source() -> Result<()> {
         })
         .await?;
 
-    device1.add_peer(Peer::new(
+    device1.add_peer(PeerConfig::new(
         device2_public_key,
         vec![IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, 32)?],
         socket_addr(HOST2_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
     ))?;
-    device2.add_peer(Peer::new(
+    device2.add_peer(PeerConfig::new(
         device1_public_key,
         vec![IpNet::new(DEVICE1_VIRTUAL_IP.parse()?, 32)?],
         socket_addr(HOST1_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
@@ -542,12 +732,12 @@ async fn does_not_echo_to_wrong_udp_port() -> Result<()> {
         })
         .await?;
 
-    device1.add_peer(Peer::new(
+    device1.add_peer(PeerConfig::new(
         device2_public_key,
         vec![IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, 32)?],
         socket_addr(HOST2_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
     ))?;
-    device2.add_peer(Peer::new(
+    device2.add_peer(PeerConfig::new(
         device1_public_key,
         vec![IpNet::new(DEVICE1_VIRTUAL_IP.parse()?, 32)?],
         socket_addr(HOST1_IP, DEFAULT_DEVICE_LISTEN_PORT)?,

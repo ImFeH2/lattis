@@ -15,7 +15,7 @@ use tokio::{
     time::{Duration, interval},
 };
 
-use super::{DeviceConfig, Peer, PrivateKey, PublicKey};
+use super::{DeviceConfig, PeerConfig, PrivateKey, PublicKey};
 
 const MTU: usize = 1500;
 const WIREGUARD_OVERHEAD: usize = 32;
@@ -216,7 +216,7 @@ impl Device {
         })
     }
 
-    pub fn add_peer(&self, peer: Peer) -> Result<()> {
+    pub fn add_peer(&self, peer: PeerConfig) -> Result<()> {
         self.state.add_peer(peer)
     }
 
@@ -226,6 +226,10 @@ impl Device {
 
     pub fn update_peer_endpoint(&self, public_key: &PublicKey, endpoint: SocketAddr) -> Result<()> {
         self.state.update_peer_endpoint(public_key, endpoint)
+    }
+
+    pub fn apply_peers(&self, peers: Vec<PeerConfig>) -> Result<()> {
+        self.state.apply_peers(peers)
     }
 }
 
@@ -240,7 +244,7 @@ impl Drop for Device {
 struct WireGuardPeer {
     index: u32,
     public_key: PublicKey,
-    allowed_ips: Vec<IpNet>,
+    allowed_ips: RwLock<Vec<IpNet>>,
     endpoint: RwLock<SocketAddr>,
     tunnel: Mutex<Tunn>,
 }
@@ -269,7 +273,7 @@ impl WireGuardPeer {
         Self {
             index,
             public_key,
-            allowed_ips,
+            allowed_ips: RwLock::new(allowed_ips),
             endpoint: RwLock::new(endpoint),
             tunnel: Mutex::new(tunnel),
         }
@@ -290,12 +294,30 @@ impl WireGuardPeer {
         Ok(())
     }
 
+    fn update_allowed_ips(&self, allowed_ips: Vec<IpNet>) -> Result<()> {
+        *self
+            .allowed_ips
+            .write()
+            .map_err(|_| anyhow!("WireGuard peer allowed IPs lock error"))? = allowed_ips;
+        Ok(())
+    }
+
+    fn update_config(&self, peer: PeerConfig) -> Result<()> {
+        self.update_allowed_ips(peer.allowed_ips)?;
+        self.update_endpoint(peer.endpoint)
+    }
+
     fn public_key_matches(&self, public_key: &PublicKey) -> bool {
         self.public_key.to_bytes() == public_key.to_bytes()
     }
 
-    fn allows_source(&self, source: IpAddr) -> bool {
-        self.allowed_ips.iter().any(|net| net.contains(&source))
+    fn allows_ip(&self, address: IpAddr) -> Result<bool> {
+        let allowed_ips = self
+            .allowed_ips
+            .read()
+            .map_err(|_| anyhow!("WireGuard peer allowed IPs lock error"))?;
+
+        Ok(allowed_ips.iter().any(|net| net.contains(&address)))
     }
 }
 
@@ -308,7 +330,7 @@ impl DeviceState {
         }
     }
 
-    fn add_peer(&self, peer: Peer) -> Result<()> {
+    fn add_peer(&self, peer: PeerConfig) -> Result<()> {
         let mut peers = self
             .peers
             .write()
@@ -327,6 +349,39 @@ impl DeviceState {
             peer.endpoint,
             index,
         )));
+
+        Ok(())
+    }
+
+    fn apply_peers(&self, target_peers: Vec<PeerConfig>) -> Result<()> {
+        ensure_unique_peer_configs(&target_peers)?;
+
+        let mut peers = self
+            .peers
+            .write()
+            .map_err(|_| anyhow!("WireGuard peer table lock error"))?;
+
+        peers.peers.retain(|peer| {
+            target_peers
+                .iter()
+                .any(|target_peer| target_peer.public_key_matches(&peer.public_key))
+        });
+
+        for target_peer in target_peers {
+            if let Some(peer) = peers.find_by_public_key(&target_peer.public_key) {
+                peer.update_config(target_peer)?;
+                continue;
+            }
+
+            let index = self.next_peer_index.fetch_add(1, Ordering::Relaxed);
+            peers.peers.push(Arc::new(WireGuardPeer::new(
+                self.private_key.clone(),
+                target_peer.public_key,
+                target_peer.allowed_ips,
+                target_peer.endpoint,
+                index,
+            )));
+        }
 
         Ok(())
     }
@@ -373,7 +428,7 @@ impl DeviceState {
             .read()
             .map_err(|_| anyhow!("WireGuard peer table lock error"))?;
 
-        Ok(peers.find_by_destination(dst))
+        peers.find_by_destination(dst)
     }
 
     fn find_peer_by_endpoint(&self, endpoint: SocketAddr) -> Result<Option<Arc<WireGuardPeer>>> {
@@ -427,11 +482,14 @@ impl PeerTable {
             .cloned()
     }
 
-    fn find_by_destination(&self, dst: IpAddr) -> Option<Arc<WireGuardPeer>> {
-        self.peers
-            .iter()
-            .find(|peer| peer.allowed_ips.iter().any(|net| net.contains(&dst)))
-            .cloned()
+    fn find_by_destination(&self, dst: IpAddr) -> Result<Option<Arc<WireGuardPeer>>> {
+        for peer in &self.peers {
+            if peer.allows_ip(dst)? {
+                return Ok(Some(peer.clone()));
+            }
+        }
+
+        Ok(None)
     }
 
     fn find_by_endpoint(&self, endpoint: SocketAddr) -> Result<Option<Arc<WireGuardPeer>>> {
@@ -451,6 +509,19 @@ impl PeerTable {
     fn all(&self) -> Vec<Arc<WireGuardPeer>> {
         self.peers.clone()
     }
+}
+
+fn ensure_unique_peer_configs(peers: &[PeerConfig]) -> Result<()> {
+    for (index, peer) in peers.iter().enumerate() {
+        ensure!(
+            !peers[index + 1..]
+                .iter()
+                .any(|other| other.public_key_matches(&peer.public_key)),
+            "Duplicate WireGuard peer"
+        );
+    }
+
+    Ok(())
 }
 
 enum EndpointUpdate {
@@ -544,7 +615,7 @@ async fn handle_tunn_result(
         }
         TunnResult::WriteToTunnelV4(packet, source) => {
             let source = IpAddr::V4(source);
-            if peer.allows_source(source) {
+            if peer.allows_ip(source)? {
                 tun.send(packet).await?;
             } else {
                 eprintln!(
@@ -555,7 +626,7 @@ async fn handle_tunn_result(
         }
         TunnResult::WriteToTunnelV6(packet, source) => {
             let source = IpAddr::V6(source);
-            if peer.allows_source(source) {
+            if peer.allows_ip(source)? {
                 tun.send(packet).await?;
             } else {
                 eprintln!(
