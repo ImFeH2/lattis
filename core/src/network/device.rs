@@ -241,7 +241,7 @@ impl Drop for Device {
     }
 }
 
-struct WireGuardPeer {
+struct Peer {
     index: u32,
     public_key: PublicKey,
     allowed_ips: RwLock<Vec<IpNet>>,
@@ -257,10 +257,10 @@ struct DeviceState {
 
 #[derive(Default)]
 struct PeerTable {
-    peers: Vec<Arc<WireGuardPeer>>,
+    peers: Vec<Arc<Peer>>,
 }
 
-impl WireGuardPeer {
+impl Peer {
     fn new(
         private_key: PrivateKey,
         public_key: PublicKey,
@@ -342,7 +342,7 @@ impl DeviceState {
         );
 
         let index = self.next_peer_index.fetch_add(1, Ordering::Relaxed);
-        peers.peers.push(Arc::new(WireGuardPeer::new(
+        peers.peers.push(Arc::new(Peer::new(
             self.private_key.clone(),
             peer.public_key,
             peer.allowed_ips,
@@ -374,7 +374,7 @@ impl DeviceState {
             }
 
             let index = self.next_peer_index.fetch_add(1, Ordering::Relaxed);
-            peers.peers.push(Arc::new(WireGuardPeer::new(
+            peers.peers.push(Arc::new(Peer::new(
                 self.private_key.clone(),
                 target_peer.public_key,
                 target_peer.allowed_ips,
@@ -422,7 +422,7 @@ impl DeviceState {
         peer.update_endpoint(endpoint)
     }
 
-    fn find_peer_by_destination(&self, dst: IpAddr) -> Result<Option<Arc<WireGuardPeer>>> {
+    fn find_peer_by_destination(&self, dst: IpAddr) -> Result<Option<Arc<Peer>>> {
         let peers = self
             .peers
             .read()
@@ -431,7 +431,7 @@ impl DeviceState {
         peers.find_by_destination(dst)
     }
 
-    fn find_peer_by_endpoint(&self, endpoint: SocketAddr) -> Result<Option<Arc<WireGuardPeer>>> {
+    fn find_peer_by_endpoint(&self, endpoint: SocketAddr) -> Result<Option<Arc<Peer>>> {
         let peers = self
             .peers
             .read()
@@ -440,7 +440,7 @@ impl DeviceState {
         peers.find_by_endpoint(endpoint)
     }
 
-    fn find_peer_by_packet(&self, raw_packet: &[u8]) -> Result<Option<Arc<WireGuardPeer>>> {
+    fn find_peer_by_packet(&self, raw_packet: &[u8]) -> Result<Option<Arc<Peer>>> {
         let packet = match Tunn::parse_incoming_packet(raw_packet) {
             Ok(packet) => packet,
             Err(_) => return Ok(None),
@@ -458,7 +458,7 @@ impl DeviceState {
         Ok(peers.find_by_index(index >> 8))
     }
 
-    fn peers(&self) -> Result<Vec<Arc<WireGuardPeer>>> {
+    fn peers(&self) -> Result<Vec<Arc<Peer>>> {
         let peers = self
             .peers
             .read()
@@ -475,14 +475,14 @@ impl PeerTable {
             .any(|peer| peer.public_key_matches(public_key))
     }
 
-    fn find_by_public_key(&self, public_key: &PublicKey) -> Option<Arc<WireGuardPeer>> {
+    fn find_by_public_key(&self, public_key: &PublicKey) -> Option<Arc<Peer>> {
         self.peers
             .iter()
             .find(|peer| peer.public_key_matches(public_key))
             .cloned()
     }
 
-    fn find_by_destination(&self, dst: IpAddr) -> Result<Option<Arc<WireGuardPeer>>> {
+    fn find_by_destination(&self, dst: IpAddr) -> Result<Option<Arc<Peer>>> {
         for peer in &self.peers {
             if peer.allows_ip(dst)? {
                 return Ok(Some(peer.clone()));
@@ -492,7 +492,7 @@ impl PeerTable {
         Ok(None)
     }
 
-    fn find_by_endpoint(&self, endpoint: SocketAddr) -> Result<Option<Arc<WireGuardPeer>>> {
+    fn find_by_endpoint(&self, endpoint: SocketAddr) -> Result<Option<Arc<Peer>>> {
         for peer in &self.peers {
             if peer.endpoint()? == endpoint {
                 return Ok(Some(peer.clone()));
@@ -502,11 +502,11 @@ impl PeerTable {
         Ok(None)
     }
 
-    fn find_by_index(&self, index: u32) -> Option<Arc<WireGuardPeer>> {
+    fn find_by_index(&self, index: u32) -> Option<Arc<Peer>> {
         self.peers.iter().find(|peer| peer.index == index).cloned()
     }
 
-    fn all(&self) -> Vec<Arc<WireGuardPeer>> {
+    fn all(&self) -> Vec<Arc<Peer>> {
         self.peers.clone()
     }
 }
@@ -531,7 +531,7 @@ enum EndpointUpdate {
 }
 
 async fn handle_peer_datagram(
-    peer: Arc<WireGuardPeer>,
+    peer: Arc<Peer>,
     raw_packet: &[u8],
     src: SocketAddr,
     tun: &tun_rs::AsyncDevice,
@@ -574,7 +574,7 @@ async fn handle_peer_datagram(
 }
 
 async fn drain_peer(
-    peer: Arc<WireGuardPeer>,
+    peer: Arc<Peer>,
     tun: &tun_rs::AsyncDevice,
     socket: &UdpSocket,
     endpoint: SocketAddr,
@@ -602,7 +602,7 @@ async fn drain_peer(
 }
 
 async fn handle_tunn_result(
-    peer: &WireGuardPeer,
+    peer: &Peer,
     result: TunnResult<'_>,
     tun: &tun_rs::AsyncDevice,
     socket: &UdpSocket,
