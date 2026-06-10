@@ -9,18 +9,24 @@ use std::{
         atomic::{AtomicU32, Ordering},
     },
 };
-use tokio::{net::UdpSocket, task::JoinHandle};
+use tokio::{
+    net::UdpSocket,
+    task::JoinHandle,
+    time::{Duration, interval},
+};
 
 use super::{DeviceConfig, Peer, PrivateKey, PublicKey};
 
 const MTU: usize = 1500;
 const WIREGUARD_OVERHEAD: usize = 32;
 const WIREGUARD_PACKET_BUFFER_SIZE: usize = MTU + WIREGUARD_OVERHEAD;
+const WIREGUARD_TIMER_INTERVAL: Duration = Duration::from_millis(250);
 
 pub struct Device {
     state: Arc<DeviceState>,
     outbound: JoinHandle<Result<()>>,
     inbound: JoinHandle<Result<()>>,
+    timer: JoinHandle<Result<()>>,
 }
 
 impl Device {
@@ -165,10 +171,52 @@ impl Device {
             })
         };
 
+        let timer = {
+            let socket = socket.clone();
+            let state = state.clone();
+
+            tokio::spawn(async move {
+                let mut interval = interval(WIREGUARD_TIMER_INTERVAL);
+
+                loop {
+                    interval.tick().await;
+
+                    for peer in state.peers()? {
+                        let mut out_buf = [0u8; WIREGUARD_PACKET_BUFFER_SIZE];
+
+                        let result = {
+                            let mut tunnel = peer
+                                .tunnel
+                                .lock()
+                                .map_err(|_| anyhow!("WireGuard tunnel mutex error"))?;
+
+                            tunnel.update_timers(&mut out_buf)
+                        };
+
+                        match result {
+                            TunnResult::WriteToNetwork(packet) => {
+                                let endpoint = peer.endpoint()?;
+                                socket.send_to(packet, endpoint).await?;
+                            }
+                            TunnResult::Done => {}
+                            TunnResult::Err(err) => {
+                                eprintln!("WireGuard timer error: {:?}", err);
+                            }
+                            TunnResult::WriteToTunnelV4(_, _)
+                            | TunnResult::WriteToTunnelV6(_, _) => {
+                                eprintln!("Unexpected timer output type");
+                            }
+                        }
+                    }
+                }
+            })
+        };
+
         Ok(Self {
             state,
             outbound,
             inbound,
+            timer,
         })
     }
 
@@ -189,6 +237,7 @@ impl Drop for Device {
     fn drop(&mut self) {
         self.outbound.abort();
         self.inbound.abort();
+        self.timer.abort();
     }
 }
 
@@ -333,6 +382,15 @@ impl DeviceState {
 
         peers.find_by_endpoint(endpoint)
     }
+
+    fn peers(&self) -> Result<Vec<Arc<WireGuardPeer>>> {
+        let peers = self
+            .peers
+            .read()
+            .map_err(|_| anyhow!("WireGuard peer table lock error"))?;
+
+        Ok(peers.all())
+    }
 }
 
 impl PeerTable {
@@ -364,5 +422,9 @@ impl PeerTable {
         }
 
         Ok(None)
+    }
+
+    fn all(&self) -> Vec<Arc<WireGuardPeer>> {
+        self.peers.clone()
     }
 }

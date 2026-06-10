@@ -26,6 +26,7 @@ const PREFIX_LEN: u8 = 24;
 const WIREGUARD_HANDSHAKE_INIT: u32 = 1;
 const WIREGUARD_HANDSHAKE_INIT_SIZE: usize = 148;
 const TEST_TIMEOUT: Duration = Duration::from_secs(3);
+const HANDSHAKE_RETRY_TEST_TIMEOUT: Duration = Duration::from_secs(7);
 
 #[tokio::test]
 async fn connects_virtual_addresses() -> Result<()> {
@@ -224,6 +225,59 @@ async fn sends_wireguard_handshake_on_underlay() -> Result<()> {
     sender.await?;
     let packet = capture.await?;
 
+    assert_wireguard_handshake_init(&packet)?;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn retries_wireguard_handshake_on_timer() -> Result<()> {
+    let (host1, host2) = connected_hosts().await?;
+    let (device1_private_key, _) = key_pair();
+    let (_, device2_public_key) = key_pair();
+
+    let device1 = host1
+        .run(move || async move {
+            let virtual_address = IpNet::new(DEVICE1_VIRTUAL_IP.parse()?, PREFIX_LEN)?;
+
+            Device::builder()
+                .private_key(device1_private_key)
+                .add_virtual_address(virtual_address)
+                .build()
+                .await
+        })
+        .await?;
+
+    device1.add_peer(Peer::new(
+        device2_public_key,
+        vec![IpNet::new(DEVICE2_VIRTUAL_IP.parse()?, 32)?],
+        socket_addr(HOST2_IP, DEFAULT_DEVICE_LISTEN_PORT)?,
+    ))?;
+
+    let outer_endpoint = socket_addr(HOST2_IP, DEFAULT_DEVICE_LISTEN_PORT)?;
+    let (ready_tx, ready_rx) = oneshot::channel();
+    let capture = host2.spawn(move || capture_outer_udp_packets(outer_endpoint, 2, ready_tx))?;
+    ready_rx.await?;
+
+    let client_addr = socket_addr(DEVICE1_VIRTUAL_IP, DEVICE1_MSG_PORT)?;
+    let target_addr = socket_addr(DEVICE2_VIRTUAL_IP, DEVICE2_MSG_PORT)?;
+    let sender = host1.spawn(move || send_udp_datagram(client_addr, target_addr))?;
+
+    sender.await?;
+    let packets = capture.await?;
+
+    ensure!(
+        packets.len() == 2,
+        "expected 2 WireGuard handshake packets, got {}",
+        packets.len()
+    );
+    assert_wireguard_handshake_init(&packets[0])?;
+    assert_wireguard_handshake_init(&packets[1])?;
+
+    Ok(())
+}
+
+fn assert_wireguard_handshake_init(packet: &[u8]) -> Result<()> {
     ensure!(
         packet.len() == WIREGUARD_HANDSHAKE_INIT_SIZE,
         "expected WireGuard handshake packet size {}, got {}",
@@ -494,6 +548,24 @@ async fn capture_outer_udp_packet(
     let (len, _) = timeout(TEST_TIMEOUT, socket.recv_from(&mut buf)).await??;
 
     Ok(buf[..len].to_vec())
+}
+
+async fn capture_outer_udp_packets(
+    bind_addr: SocketAddr,
+    count: usize,
+    ready: oneshot::Sender<()>,
+) -> Result<Vec<Vec<u8>>> {
+    let socket = UdpSocket::bind(bind_addr).await?;
+    let _ = ready.send(());
+
+    let mut packets = Vec::with_capacity(count);
+    for _ in 0..count {
+        let mut buf = [0u8; 2048];
+        let (len, _) = timeout(HANDSHAKE_RETRY_TEST_TIMEOUT, socket.recv_from(&mut buf)).await??;
+        packets.push(buf[..len].to_vec());
+    }
+
+    Ok(packets)
 }
 
 async fn send_udp_datagram(bind_addr: SocketAddr, target_addr: SocketAddr) -> Result<()> {
