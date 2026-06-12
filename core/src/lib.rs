@@ -1,6 +1,6 @@
-pub mod network;
+pub mod device;
 
-pub use network::{
+pub use device::{
     DEFAULT_DEVICE_LISTEN_PORT, Device, DeviceIdentity, PeerConfig, PrivateKey, PublicKey,
 };
 
