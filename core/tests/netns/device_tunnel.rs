@@ -1,7 +1,7 @@
 use anyhow::{Result, ensure};
 use ipnet::IpNet;
 use lattis_core::{DEFAULT_DEVICE_LISTEN_PORT, Device, PeerConfig, PrivateKey, PublicKey};
-use net_topo::{
+use net_lab::{
     DirectLink, Host,
     testing::{run_udp_echo_client, run_udp_echo_server},
 };

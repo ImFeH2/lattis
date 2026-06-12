@@ -32,7 +32,7 @@ tokio = { version = "1", features = [
 ] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
-net-topo = { workspace = true }
+net-lab = { workspace = true }
 
 [[test]]
 name = "netns"

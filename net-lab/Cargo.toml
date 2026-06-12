@@ -1,5 +1,5 @@
 [package]
-name = "net-topo"
+name = "net-lab"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

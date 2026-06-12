@@ -2635,7 +2635,7 @@ dependencies = [
  "etherparse",
  "if-addrs",
  "ipnet",
- "net-topo",
+ "net-lab",
  "rand_core 0.6.4",
  "tokio",
  "tun-rs",
@@ -3066,7 +3066,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "net-topo"
+name = "net-lab"
 version = "0.0.1"
 dependencies = [
  "anyhow",

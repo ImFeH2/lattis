@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["app", "core", "desktop", "mobile", "net-topo"]
+members = ["app", "core", "desktop", "mobile", "net-lab"]
 
 [workspace.package]
 version = "0.0.1"
@@ -15,4 +15,4 @@ readme = "README.md"
 dioxus = { version = "0.7.9" }
 lattis = { path = "app" }
 lattis-core = { path = "core" }
-net-topo = { path = "net-topo" }
+net-lab = { path = "net-lab" }

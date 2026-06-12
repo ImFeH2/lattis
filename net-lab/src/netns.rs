@@ -15,7 +15,7 @@ fn unique_netns_name(label: &str) -> String {
     let id = NETNS_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let pid = std::process::id();
 
-    format!("net-topo-{}-{}-{}", label, pid, id)
+    format!("net-lab-{}-{}-{}", label, pid, id)
 }
 
 #[derive(Debug)]

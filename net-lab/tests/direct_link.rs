@@ -1,7 +1,7 @@
 #![cfg(target_os = "linux")]
 
 use anyhow::Result;
-use net_topo::{
+use net_lab::{
     DirectLink, Host,
     testing::{run_udp_echo_client, run_udp_echo_server},
 };
