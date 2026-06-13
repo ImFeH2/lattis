@@ -1952,6 +1952,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-build",
+ "tauri-plugin-tun-device",
 ]
 
 [[package]]
@@ -1973,7 +1974,7 @@ dependencies = [
  "net-lab",
  "rand_core",
  "tokio",
- "tun-device",
+ "tun-rs",
 ]
 
 [[package]]
@@ -3710,6 +3711,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin"
+version = "2.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e126abc9e84e35cdfd01596140a73a1850cdb0df0a23acf0185776c30b469a6e"
+dependencies = [
+ "anyhow",
+ "glob",
+ "plist",
+ "schemars 0.8.22",
+ "serde",
+ "serde_json",
+ "tauri-utils",
+ "walkdir",
+]
+
+[[package]]
+name = "tauri-plugin-tun-device"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "lattis-core",
+ "serde",
+ "tauri",
+ "tauri-plugin",
+]
+
+[[package]]
 name = "tauri-runtime"
 version = "2.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4177,15 +4205,6 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
-
-[[package]]
-name = "tun-device"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "ipnet",
- "tun-rs",
-]
 
 [[package]]
 name = "tun-rs"

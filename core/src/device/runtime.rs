@@ -15,9 +15,11 @@ use tokio::{
     task::JoinHandle,
     time::{Duration, interval},
 };
-use tun_device::{TunConfig, TunDevice};
 
-use super::{DeviceConfig, DeviceIdentity, PeerConfig, PrivateKey, PublicKey};
+use super::{
+    DeviceConfig, DeviceIdentity, PeerConfig, PrivateKey, PublicKey,
+    tun::{TunConfig, TunDevice},
+};
 
 const MTU: usize = 1500;
 const WIREGUARD_OVERHEAD: usize = 32;
@@ -44,12 +46,24 @@ impl Device {
             bail!("At least one virtual address must be configured");
         }
 
-        let virtual_addresses = config.virtual_addresses;
         let tun = TunDevice::open(TunConfig {
             name: interface_name,
-            addresses: virtual_addresses.clone(),
+            addresses: config.virtual_addresses.clone(),
         })?;
 
+        Self::start_with_tun(listen_port, config, tun).await
+    }
+
+    pub(crate) async fn start_with_tun(
+        listen_port: u16,
+        config: DeviceConfig,
+        tun: TunDevice,
+    ) -> Result<Self> {
+        if config.virtual_addresses.is_empty() {
+            bail!("At least one virtual address must be configured");
+        }
+
+        let virtual_addresses = config.virtual_addresses;
         let socket_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), listen_port);
         let socket = UdpSocket::bind(&socket_address).await?;
 

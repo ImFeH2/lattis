@@ -1,6 +1,8 @@
 use anyhow::{Result, bail};
 use ipnet::IpNet;
 use std::io;
+#[cfg(unix)]
+use std::os::fd::{IntoRawFd, OwnedFd};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TunConfig {
@@ -15,6 +17,13 @@ pub struct TunDevice {
 impl TunDevice {
     pub fn open(config: TunConfig) -> Result<Self> {
         open(config)
+    }
+
+    #[cfg(unix)]
+    pub fn from_owned_fd(fd: OwnedFd) -> Result<Self> {
+        let inner = unsafe { tun_rs::AsyncDevice::from_fd(fd.into_raw_fd())? };
+
+        Ok(Self { inner })
     }
 
     pub async fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {

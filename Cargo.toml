@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["app", "cli", "core", "net-lab", "tun-device"]
+members = ["app", "cli", "core", "net-lab", "plugins/tun-device"]
 
 [workspace.package]
 version = "0.0.1"
@@ -14,4 +14,4 @@ readme = "README.md"
 [workspace.dependencies]
 lattis-core = { version = "0.0.1", path = "core" }
 net-lab = { version = "0.0.1", path = "net-lab" }
-tun-device = { version = "0.0.1", path = "tun-device" }
+tauri-plugin-tun-device = { version = "0.0.1", path = "plugins/tun-device" }

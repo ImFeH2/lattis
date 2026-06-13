@@ -3,6 +3,7 @@ use ipnet::IpNet;
 use rand_core::OsRng;
 use std::net::SocketAddr;
 
+use super::tun::TunDevice;
 use super::{Device, PrivateKey, PublicKey};
 
 const DEFAULT_INTERFACE_NAME: &str = "lattis0";
@@ -47,6 +48,7 @@ pub struct DeviceBuilder {
     interface_name: String,
     listen_port: u16,
     config: DeviceConfig,
+    tun_device: Option<TunDevice>,
 }
 
 impl Device {
@@ -58,6 +60,7 @@ impl Device {
                 private_key: PrivateKey::random_from_rng(OsRng),
                 virtual_addresses: vec![],
             },
+            tun_device: None,
         }
     }
 }
@@ -83,7 +86,17 @@ impl DeviceBuilder {
         self
     }
 
+    pub fn tun_device(mut self, device: TunDevice) -> Self {
+        self.tun_device = Some(device);
+        self
+    }
+
     pub async fn build(self) -> Result<Device> {
-        Device::start(self.interface_name, self.listen_port, self.config).await
+        match self.tun_device {
+            Some(tun_device) => {
+                Device::start_with_tun(self.listen_port, self.config, tun_device).await
+            }
+            None => Device::start(self.interface_name, self.listen_port, self.config).await,
+        }
     }
 }

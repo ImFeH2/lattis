@@ -2,6 +2,7 @@ pub mod device;
 
 pub use device::{
     DEFAULT_DEVICE_LISTEN_PORT, Device, DeviceIdentity, PeerConfig, PrivateKey, PublicKey,
+    TunConfig, TunDevice,
 };
 
 use anyhow::Result;
