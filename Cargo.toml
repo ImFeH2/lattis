@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["app", "core", "desktop", "mobile", "net-lab"]
+members = ["app", "cli", "core", "net-lab"]
 
 [workspace.package]
 version = "0.0.1"
@@ -12,7 +12,5 @@ repository = "https://github.com/ImFeH2/lattis"
 readme = "README.md"
 
 [workspace.dependencies]
-dioxus = { version = "0.7.9" }
-lattis = { path = "app" }
-lattis-core = { path = "core" }
-net-lab = { path = "net-lab" }
+lattis-core = { version = "0.0.1", path = "core" }
+net-lab = { version = "0.0.1", path = "net-lab" }

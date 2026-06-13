@@ -4,6 +4,8 @@ repos:
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
+      - id: check-json
+        exclude: (^|/)tsconfig(\.[^/]+)?\.json$
       - id: check-yaml
       - id: check-toml
       - id: check-added-large-files
@@ -17,13 +19,6 @@ repos:
         pass_filenames: false
         types_or: [rust, toml]
 
-      - id: dx-fmt
-        name: Dioxus format
-        entry: dx fmt
-        language: system
-        pass_filenames: false
-        types_or: [rust]
-
       - id: cargo-clippy
         name: Cargo lint
         entry: cargo clippy --workspace --all-targets -- -D warnings
@@ -31,39 +26,16 @@ repos:
         pass_filenames: false
         types_or: [rust, toml]
 
-      - id: dx-check-linux
-        name: Dioxus check Linux
-        entry: dx check --package desktop --platform linux
-        language: system
-        pass_filenames: false
-
-      - id: dx-check-macos
-        name: Dioxus check macOS
-        entry: dx check --package desktop --platform macos
-        language: system
-        pass_filenames: false
-
-      - id: dx-check-windows
-        name: Dioxus check Windows
-        entry: dx check --package desktop --platform windows
-        language: system
-        pass_filenames: false
-
-      - id: dx-check-android
-        name: Dioxus check Android
-        entry: dx check --package mobile --platform android
-        language: system
-        pass_filenames: false
-
-      - id: dx-check-ios
-        name: Dioxus check iOS
-        entry: dx check --package mobile --platform ios
-        language: system
-        pass_filenames: false
-
       - id: cargo-test
         name: Cargo test
         entry: cargo test --workspace
         language: system
         pass_filenames: false
         types_or: [rust, toml]
+
+      - id: frontend-check
+        name: Frontend check
+        entry: pnpm --dir ui run check
+        language: system
+        pass_filenames: false
+        files: ^(ui/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$)

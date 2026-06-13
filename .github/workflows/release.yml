@@ -10,12 +10,12 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  ANDROID_NDK_VERSION: 30.0.14904198
   CARGO_TERM_COLOR: always
-  DIOXUS_CLI_VERSION: 0.7.9
 
 jobs:
-  quality:
-    name: Quality
+  rust-quality:
+    name: Rust Quality
     runs-on: ubuntu-latest
 
     steps:
@@ -38,53 +38,48 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt,clippy
-          target: x86_64-apple-ios,x86_64-linux-android
           rustflags: ""
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@v1.19.1
-        with:
-          version: 1.19.1
-
-      - name: Install Dioxus CLI
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force --locked
-
       - name: Cargo format
         run: cargo fmt --all --check
-
-      - name: Dioxus format
-        run: dx fmt --check
 
       - name: Cargo lint
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Dioxus check Linux
-        run: dx check --package desktop --platform linux --locked
-
-      - name: Dioxus check macOS
-        run: dx check --package desktop --platform macos --locked
-
-      - name: Dioxus check Windows
-        run: dx check --package desktop --platform windows --locked
-
-      - name: Dioxus check Android
-        run: dx check --package mobile --platform android --locked
-
-      - name: Dioxus check iOS
-        run: dx check --package mobile --platform ios --locked
-
       - name: Cargo test
         run: cargo test --workspace --locked
 
-  linux:
-    name: Linux
+  frontend-quality:
+    name: Frontend Quality
     runs-on: ubuntu-latest
-    needs: quality
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Set up pnpm
+        run: corepack enable
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Frontend check
+        run: pnpm --dir ui run check
+
+  linux:
+    name: App Linux
+    runs-on: ubuntu-latest
+    needs:
+      - frontend-quality
+      - rust-quality
 
     steps:
       - name: Checkout
@@ -110,23 +105,27 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@v1.19.1
-        with:
-          version: 1.19.1
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --locked
 
-      - name: Install Dioxus CLI
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force --locked
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Set up pnpm
+        run: corepack enable
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Bundle Linux
-        run: dx bundle --package desktop --platform linux --release --locked --package-types deb --out-dir dist/linux
+        run: cargo tauri build --bundles deb --ci
 
       - name: Archive Linux
         run: |
           mkdir -p release
-          deb_path="$(find dist/linux -name "*.deb" -type f | sort | head -n 1)"
+          deb_path="$(find target/release/bundle/deb -name "*.deb" -type f | sort | head -n 1)"
           test -n "$deb_path"
           cp "$deb_path" "release/Lattis-${GITHUB_REF_NAME}-linux.deb"
 
@@ -137,10 +136,10 @@ jobs:
           path: release/*
           if-no-files-found: error
 
-  macos:
-    name: macOS
-    runs-on: macos-latest
-    needs: quality
+  cli-linux:
+    name: CLI Linux
+    runs-on: ubuntu-latest
+    needs: rust-quality
 
     steps:
       - name: Checkout
@@ -155,23 +154,62 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@v1.19.1
-        with:
-          version: 1.19.1
+      - name: Build CLI
+        run: cargo build -p lattis-cli --bin lattis --release --locked
 
-      - name: Install Dioxus CLI
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force --locked
+      - name: Archive CLI
+        run: |
+          mkdir -p release
+          tar -czf "release/lattis-${GITHUB_REF_NAME}-linux.tar.gz" -C target/release lattis
+
+      - name: Upload CLI Linux artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-cli-linux
+          path: release/*
+          if-no-files-found: error
+
+  macos:
+    name: App macOS
+    runs-on: macos-latest
+    needs:
+      - frontend-quality
+      - rust-quality
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          rustflags: ""
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --locked
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Set up pnpm
+        run: corepack enable
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Bundle macOS
-        run: dx bundle --package desktop --platform macos --release --locked --package-types dmg --codesign false --out-dir dist/macos
+        run: cargo tauri build --no-sign --ci
 
       - name: Archive macOS
         run: |
           mkdir -p release
-          dmg_path="$(find dist/macos -name "*.dmg" -type f | sort | head -n 1)"
+          dmg_path="$(find target/release/bundle/dmg -name "*.dmg" -type f | sort | head -n 1)"
           test -n "$dmg_path"
           cp "$dmg_path" "release/Lattis-${GITHUB_REF_NAME}-macos.dmg"
 
@@ -182,10 +220,45 @@ jobs:
           path: release/*
           if-no-files-found: error
 
+  cli-macos:
+    name: CLI macOS
+    runs-on: macos-latest
+    needs: rust-quality
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          rustflags: ""
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build CLI
+        run: cargo build -p lattis-cli --bin lattis --release --locked
+
+      - name: Archive CLI
+        run: |
+          mkdir -p release
+          tar -czf "release/lattis-${GITHUB_REF_NAME}-macos.tar.gz" -C target/release lattis
+
+      - name: Upload CLI macOS artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-cli-macos
+          path: release/*
+          if-no-files-found: error
+
   windows:
-    name: Windows
+    name: App Windows
     runs-on: windows-latest
-    needs: quality
+    needs:
+      - frontend-quality
+      - rust-quality
 
     steps:
       - name: Checkout
@@ -204,26 +277,32 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@v1.19.1
-        with:
-          version: 1.19.1
-
-      - name: Install Dioxus CLI
+      - name: Install Tauri CLI
         shell: bash
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force --locked
+        run: cargo install tauri-cli --locked
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Set up pnpm
+        shell: bash
+        run: corepack enable
+
+      - name: Install frontend dependencies
+        shell: bash
+        run: pnpm install --frozen-lockfile
 
       - name: Bundle Windows
         shell: bash
-        run: dx bundle --package desktop --platform windows --release --locked --package-types nsis --out-dir dist/windows
+        run: cargo tauri build --ci
 
       - name: Archive Windows
         shell: bash
         run: |
           mkdir -p release
-          installer_path="$(find dist/windows -name "*.exe" -type f | sort | head -n 1)"
+          installer_path="$(find target/release/bundle/nsis -name "*.exe" -type f | sort | head -n 1)"
           test -n "$installer_path"
           cp "$installer_path" "release/Lattis-${GITHUB_REF_NAME}-windows.exe"
 
@@ -234,10 +313,47 @@ jobs:
           path: release/*
           if-no-files-found: error
 
+  cli-windows:
+    name: CLI Windows
+    runs-on: windows-latest
+    needs: rust-quality
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          rustflags: ""
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build CLI
+        shell: bash
+        run: cargo build -p lattis-cli --bin lattis --release --locked
+
+      - name: Archive CLI
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release
+          Compress-Archive -Path target/release/lattis.exe -DestinationPath "release/lattis-${env:GITHUB_REF_NAME}-windows.zip"
+
+      - name: Upload CLI Windows artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-cli-windows
+          path: release/*
+          if-no-files-found: error
+
   android:
-    name: Android
+    name: App Android
     runs-on: ubuntu-latest
-    needs: quality
+    needs:
+      - frontend-quality
+      - rust-quality
 
     steps:
       - name: Checkout
@@ -247,52 +363,49 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v4.0.1
+        uses: android-actions/setup-android@v4
 
       - name: Install Android dependencies
         run: |
           yes | sdkmanager --licenses
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;${ANDROID_NDK_VERSION}"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
 
       - name: Set up Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-          target: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+          target: aarch64-linux-android
           rustflags: ""
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@v1.19.1
-        with:
-          version: 1.19.1
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --locked
 
-      - name: Install Dioxus CLI
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force --locked
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Set up pnpm
+        run: corepack enable
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Bundle Android
-        run: dx bundle --package mobile --platform android --release --locked --package-types apk --out-dir dist/android
-
-      - name: Build unsigned Android release APK
-        run: |
-          gradle_wrapper="$(find target/dx -path "*/release/android/app/gradlew" -type f | sort | head -n 1)"
-          test -n "$gradle_wrapper"
-          gradle_project="$(dirname "$gradle_wrapper")"
-          "$gradle_wrapper" -p "$gradle_project" assembleRelease
+        run: cargo tauri android build --apk --target aarch64 --ci
 
       - name: Archive Android
         run: |
           mkdir -p release
-          apk_path="$(find target/dx -path "*/release/android/app/app/build/outputs/apk/release/*-unsigned.apk" -type f | sort | head -n 1)"
+          apk_path="$(find app/gen/android/app/build/outputs/apk -path "*/release/*.apk" -type f | sort | head -n 1)"
           test -n "$apk_path"
           cp "$apk_path" "release/Lattis-${GITHUB_REF_NAME}-android.apk"
 
@@ -304,9 +417,11 @@ jobs:
           if-no-files-found: error
 
   ios:
-    name: iOS
+    name: App iOS Simulator
     runs-on: macos-latest
-    needs: quality
+    needs:
+      - frontend-quality
+      - rust-quality
 
     steps:
       - name: Checkout
@@ -316,34 +431,38 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-          target: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+          target: aarch64-apple-ios-sim
           rustflags: ""
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@v1.19.1
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --locked
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
         with:
-          version: 1.19.1
+          node-version: 24
 
-      - name: Install Dioxus CLI
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: cargo binstall "dioxus-cli@${DIOXUS_CLI_VERSION}" --no-confirm --force --locked
+      - name: Set up pnpm
+        run: corepack enable
 
-      - name: Bundle iOS
-        run: dx bundle --package mobile --platform ios --release --locked --package-types ios --codesign false --out-dir dist/ios
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
 
-      - name: Archive iOS
+      - name: Initialize iOS project
+        run: cargo tauri ios init --ci --skip-targets-install
+
+      - name: Bundle iOS simulator
+        run: cargo tauri ios build --debug --target aarch64-sim --ci
+
+      - name: Archive iOS simulator
         run: |
           mkdir -p release
-          app_path="$(find dist/ios -name "*.app" -type d | head -n 1)"
+          app_path="$(find app/gen/apple target -name "*.app" -type d | sort | head -n 1)"
           test -n "$app_path"
-          staging_dir="$(mktemp -d)"
-          mkdir -p "$staging_dir/Payload"
-          ditto "$app_path" "$staging_dir/Payload/$(basename "$app_path")"
-          ditto -c -k --sequesterRsrc --keepParent "$staging_dir/Payload" "release/Lattis-${GITHUB_REF_NAME}-ios.ipa"
+          ditto -c -k --keepParent "$app_path" "release/Lattis-${GITHUB_REF_NAME}-ios-simulator.zip"
 
       - name: Upload iOS artifact
         uses: actions/upload-artifact@v7
@@ -357,8 +476,11 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - linux
+      - cli-linux
       - macos
+      - cli-macos
       - windows
+      - cli-windows
       - android
       - ios
     permissions:
@@ -378,7 +500,4 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           name: Lattis ${{ github.ref_name }}
-          tag_name: ${{ github.ref_name }}
-          generate_release_notes: true
-          fail_on_unmatched_files: true
           files: release-assets/*
