@@ -4,7 +4,6 @@ repos:
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
-        exclude: ^plugins/tun-device/permissions/schemas/schema\.json$
       - id: check-json
         exclude: (^|/)tsconfig(\.[^/]+)?\.json$
       - id: check-yaml
