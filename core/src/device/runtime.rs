@@ -15,6 +15,7 @@ use tokio::{
     task::JoinHandle,
     time::{Duration, interval},
 };
+use tun_device::{TunConfig, TunDevice};
 
 use super::{DeviceConfig, DeviceIdentity, PeerConfig, PrivateKey, PublicKey};
 
@@ -43,22 +44,16 @@ impl Device {
             bail!("At least one virtual address must be configured");
         }
 
-        let builder = tun_rs::DeviceBuilder::new().name(interface_name);
-        let tun = builder.build_async()?;
-        for addr in &config.virtual_addresses {
-            match addr {
-                IpNet::V4(address) => tun.add_address_v4(address.addr(), address.prefix_len())?,
-                IpNet::V6(address) => tun.add_address_v6(address.addr(), address.prefix_len())?,
-            };
-        }
+        let virtual_addresses = config.virtual_addresses;
+        let tun = TunDevice::open(TunConfig {
+            name: interface_name,
+            addresses: virtual_addresses.clone(),
+        })?;
 
         let socket_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), listen_port);
         let socket = UdpSocket::bind(&socket_address).await?;
 
-        let state = Arc::new(DeviceState::new(
-            config.private_key,
-            config.virtual_addresses,
-        ));
+        let state = Arc::new(DeviceState::new(config.private_key, virtual_addresses));
         let tun = Arc::new(tun);
         let socket = Arc::new(socket);
 
@@ -556,7 +551,7 @@ async fn handle_peer_datagram(
     peer: Arc<Peer>,
     raw_packet: &[u8],
     src: SocketAddr,
-    tun: &tun_rs::AsyncDevice,
+    tun: &TunDevice,
     socket: &UdpSocket,
     endpoint_update: EndpointUpdate,
     log_errors: bool,
@@ -597,7 +592,7 @@ async fn handle_peer_datagram(
 
 async fn drain_peer(
     peer: Arc<Peer>,
-    tun: &tun_rs::AsyncDevice,
+    tun: &TunDevice,
     socket: &UdpSocket,
     endpoint: SocketAddr,
 ) -> Result<()> {
@@ -626,7 +621,7 @@ async fn drain_peer(
 async fn handle_tunn_result(
     peer: &Peer,
     result: TunnResult<'_>,
-    tun: &tun_rs::AsyncDevice,
+    tun: &TunDevice,
     socket: &UdpSocket,
     endpoint: SocketAddr,
     context: &str,
