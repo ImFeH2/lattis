@@ -17,8 +17,8 @@ use tokio::{
 };
 
 use super::{
-    DeviceConfig, DeviceIdentity, PeerConfig, PrivateKey, PublicKey,
-    tun::{TunConfig, TunDevice},
+    DeviceConfig, DeviceIdentity, PeerConfig, PrivateKey, PublicKey, packet::PacketDevice,
+    tun::open_tun_device,
 };
 
 const MTU: usize = 1500;
@@ -46,18 +46,15 @@ impl Device {
             bail!("At least one virtual address must be configured");
         }
 
-        let tun = TunDevice::open(TunConfig {
-            name: interface_name,
-            addresses: config.virtual_addresses.clone(),
-        })?;
+        let packet_device = open_tun_device(&interface_name, config.virtual_addresses.clone())?;
 
-        Self::start_with_tun(listen_port, config, tun).await
+        Self::start_with_packet_device(listen_port, config, Arc::new(packet_device)).await
     }
 
-    pub(crate) async fn start_with_tun(
+    pub(crate) async fn start_with_packet_device(
         listen_port: u16,
         config: DeviceConfig,
-        tun: TunDevice,
+        packet_device: Arc<dyn PacketDevice>,
     ) -> Result<Self> {
         if config.virtual_addresses.is_empty() {
             bail!("At least one virtual address must be configured");
@@ -68,18 +65,17 @@ impl Device {
         let socket = UdpSocket::bind(&socket_address).await?;
 
         let state = Arc::new(DeviceState::new(config.private_key, virtual_addresses));
-        let tun = Arc::new(tun);
         let socket = Arc::new(socket);
 
         let outbound = {
-            let tun = tun.clone();
+            let packet_device = packet_device.clone();
             let socket = socket.clone();
             let state = state.clone();
 
             tokio::spawn(async move {
                 let mut buf = [0u8; MTU];
                 loop {
-                    let len = tun.recv(&mut buf).await?;
+                    let len = packet_device.recv(&mut buf).await?;
                     let raw_packet = &buf[..len];
                     let ip_packet = IpSlice::from_slice(raw_packet)?;
                     let dst = ip_packet.destination_addr();
@@ -118,7 +114,7 @@ impl Device {
         };
 
         let inbound = {
-            let tun = tun.clone();
+            let packet_device = packet_device.clone();
             let socket = socket.clone();
             let state = state.clone();
 
@@ -133,7 +129,7 @@ impl Device {
                             peer,
                             raw_packet,
                             src,
-                            &tun,
+                            packet_device.as_ref(),
                             &socket,
                             EndpointUpdate::None,
                             true,
@@ -147,7 +143,7 @@ impl Device {
                             peer,
                             raw_packet,
                             src,
-                            &tun,
+                            packet_device.as_ref(),
                             &socket,
                             EndpointUpdate::VerifiedPacket,
                             true,
@@ -162,7 +158,7 @@ impl Device {
                             peer,
                             raw_packet,
                             src,
-                            &tun,
+                            packet_device.as_ref(),
                             &socket,
                             EndpointUpdate::HandshakeResponse,
                             false,
@@ -565,7 +561,7 @@ async fn handle_peer_datagram(
     peer: Arc<Peer>,
     raw_packet: &[u8],
     src: SocketAddr,
-    tun: &TunDevice,
+    packet_device: &dyn PacketDevice,
     socket: &UdpSocket,
     endpoint_update: EndpointUpdate,
     log_errors: bool,
@@ -598,15 +594,15 @@ async fn handle_peer_datagram(
         peer.update_endpoint(src)?;
     }
 
-    handle_tunn_result(&peer, result, tun, socket, src, "inbound").await?;
-    drain_peer(peer, tun, socket, src).await?;
+    handle_tunn_result(&peer, result, packet_device, socket, src, "inbound").await?;
+    drain_peer(peer, packet_device, socket, src).await?;
 
     Ok(true)
 }
 
 async fn drain_peer(
     peer: Arc<Peer>,
-    tun: &TunDevice,
+    packet_device: &dyn PacketDevice,
     socket: &UdpSocket,
     endpoint: SocketAddr,
 ) -> Result<()> {
@@ -622,7 +618,7 @@ async fn drain_peer(
         };
 
         let done = matches!(result, TunnResult::Done | TunnResult::Err(_));
-        handle_tunn_result(&peer, result, tun, socket, endpoint, "drain").await?;
+        handle_tunn_result(&peer, result, packet_device, socket, endpoint, "drain").await?;
 
         if done {
             break;
@@ -635,7 +631,7 @@ async fn drain_peer(
 async fn handle_tunn_result(
     peer: &Peer,
     result: TunnResult<'_>,
-    tun: &TunDevice,
+    packet_device: &dyn PacketDevice,
     socket: &UdpSocket,
     endpoint: SocketAddr,
     context: &str,
@@ -647,7 +643,7 @@ async fn handle_tunn_result(
         TunnResult::WriteToTunnelV4(packet, source) => {
             let source = IpAddr::V4(source);
             if peer.allows_ip(source)? {
-                tun.send(packet).await?;
+                packet_device.send(packet).await?;
             } else {
                 eprintln!(
                     "Dropped WireGuard packet from unauthorized source {}",
@@ -658,7 +654,7 @@ async fn handle_tunn_result(
         TunnResult::WriteToTunnelV6(packet, source) => {
             let source = IpAddr::V6(source);
             if peer.allows_ip(source)? {
-                tun.send(packet).await?;
+                packet_device.send(packet).await?;
             } else {
                 eprintln!(
                     "Dropped WireGuard packet from unauthorized source {}",

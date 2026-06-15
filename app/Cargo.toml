@@ -8,10 +8,6 @@ license.workspace = true
 repository.workspace = true
 readme.workspace = true
 
-[lib]
-name = "lattis_app"
-crate-type = ["staticlib", "cdylib", "rlib"]
-
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -20,6 +16,3 @@ lattis-core = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = [] }
-
-[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
-tauri-plugin-tun-device = { workspace = true }

@@ -1,8 +1,8 @@
 pub mod device;
 
 pub use device::{
-    DEFAULT_DEVICE_LISTEN_PORT, Device, DeviceIdentity, PeerConfig, PrivateKey, PublicKey,
-    TunConfig, TunDevice,
+    DEFAULT_DEVICE_LISTEN_PORT, Device, DeviceIdentity, PacketDevice, PacketDeviceFuture,
+    PeerConfig, PrivateKey, PublicKey, open_tun_device,
 };
 
 use anyhow::Result;

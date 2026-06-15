@@ -10,7 +10,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  ANDROID_NDK_VERSION: 30.0.14904198
   CARGO_TERM_COLOR: always
 
 jobs:
@@ -348,129 +347,6 @@ jobs:
           path: release/*
           if-no-files-found: error
 
-  android:
-    name: App Android
-    runs-on: ubuntu-latest
-    needs:
-      - frontend-quality
-      - rust-quality
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Java
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-
-      - name: Install Android dependencies
-        run: |
-          yes | sdkmanager --licenses
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;${ANDROID_NDK_VERSION}"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
-
-      - name: Set up Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-          target: aarch64-linux-android
-          rustflags: ""
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --locked
-
-      - name: Set up Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
-      - name: Set up pnpm
-        run: corepack enable
-
-      - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Bundle Android
-        run: cargo tauri android build --apk --target aarch64 --ci
-
-      - name: Archive Android
-        run: |
-          mkdir -p release
-          apk_path="$(find app/gen/android/app/build/outputs/apk -path "*/release/*.apk" -type f | sort | head -n 1)"
-          test -n "$apk_path"
-          cp "$apk_path" "release/Lattis-${GITHUB_REF_NAME}-android.apk"
-
-      - name: Upload Android artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-android
-          path: release/*
-          if-no-files-found: error
-
-  ios:
-    name: App iOS Simulator
-    runs-on: macos-latest
-    needs:
-      - frontend-quality
-      - rust-quality
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-          target: aarch64-apple-ios-sim
-          rustflags: ""
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --locked
-
-      - name: Set up Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
-      - name: Set up pnpm
-        run: corepack enable
-
-      - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Initialize iOS project
-        run: cargo tauri ios init --ci --skip-targets-install
-
-      - name: Bundle iOS simulator
-        run: cargo tauri ios build --debug --target aarch64-sim --ci
-
-      - name: Archive iOS simulator
-        run: |
-          mkdir -p release
-          app_path="$(find app/gen/apple target -name "*.app" -type d | sort | head -n 1)"
-          test -n "$app_path"
-          ditto -c -k --keepParent "$app_path" "release/Lattis-${GITHUB_REF_NAME}-ios-simulator.zip"
-
-      - name: Upload iOS artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-ios
-          path: release/*
-          if-no-files-found: error
-
   release:
     name: GitHub Release
     runs-on: ubuntu-latest
@@ -481,8 +357,6 @@ jobs:
       - cli-macos
       - windows
       - cli-windows
-      - android
-      - ios
     permissions:
       contents: write
 

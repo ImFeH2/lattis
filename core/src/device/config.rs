@@ -1,10 +1,9 @@
 use anyhow::Result;
 use ipnet::IpNet;
 use rand_core::OsRng;
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 
-use super::tun::TunDevice;
-use super::{Device, PrivateKey, PublicKey};
+use super::{Device, PacketDevice, PrivateKey, PublicKey};
 
 const DEFAULT_INTERFACE_NAME: &str = "lattis0";
 pub const DEFAULT_DEVICE_LISTEN_PORT: u16 = 52171;
@@ -48,7 +47,7 @@ pub struct DeviceBuilder {
     interface_name: String,
     listen_port: u16,
     config: DeviceConfig,
-    tun_device: Option<TunDevice>,
+    packet_device: Option<Arc<dyn PacketDevice>>,
 }
 
 impl Device {
@@ -60,7 +59,7 @@ impl Device {
                 private_key: PrivateKey::random_from_rng(OsRng),
                 virtual_addresses: vec![],
             },
-            tun_device: None,
+            packet_device: None,
         }
     }
 }
@@ -86,15 +85,15 @@ impl DeviceBuilder {
         self
     }
 
-    pub fn tun_device(mut self, device: TunDevice) -> Self {
-        self.tun_device = Some(device);
+    pub fn packet_device(mut self, device: impl PacketDevice) -> Self {
+        self.packet_device = Some(Arc::new(device));
         self
     }
 
     pub async fn build(self) -> Result<Device> {
-        match self.tun_device {
-            Some(tun_device) => {
-                Device::start_with_tun(self.listen_port, self.config, tun_device).await
+        match self.packet_device {
+            Some(packet_device) => {
+                Device::start_with_packet_device(self.listen_port, self.config, packet_device).await
             }
             None => Device::start(self.interface_name, self.listen_port, self.config).await,
         }
