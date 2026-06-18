@@ -1,12 +1,10 @@
-mod config;
-mod packet;
+pub(crate) mod builder;
+mod coordinator;
+pub(crate) mod packet;
+mod peer;
+mod route;
 mod runtime;
 mod tun;
+mod wireguard;
 
-pub use boringtun::x25519::{PublicKey, StaticSecret as PrivateKey};
-pub use config::{
-    DEFAULT_DEVICE_LISTEN_PORT, DeviceBuilder, DeviceConfig, DeviceIdentity, PeerConfig,
-};
-pub use packet::{PacketDevice, PacketDeviceFuture};
 pub use runtime::Device;
-pub use tun::open_tun_device;

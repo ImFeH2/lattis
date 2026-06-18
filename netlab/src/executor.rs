@@ -15,18 +15,37 @@ type AsyncNamespaceJob = Box<dyn FnOnce(tokio::runtime::Handle) + Send + 'static
 
 const MAX_BLOCKING_WORKERS: usize = 512;
 
-fn log_thread_join(name: &str, result: thread::Result<Result<()>>) {
-    match result {
-        Ok(Ok(())) => {}
-        Ok(Err(err)) => eprintln!("{} failed: {}", name, err),
-        Err(_) => eprintln!("{} panicked", name),
-    }
-}
-
 #[derive(Debug)]
 pub(crate) struct NamespaceExecutor {
     async_executor: AsyncNamespaceExecutor,
     blocking_executor: BlockingNamespaceExecutor,
+}
+
+pub struct HostTask<T> {
+    result: tokio::sync::oneshot::Receiver<Result<T>>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum RuntimeConfig {
+    CurrentThread,
+    MultiThread { worker_threads: usize },
+}
+
+#[derive(Debug)]
+struct AsyncNamespaceExecutor {
+    jobs: Option<tokio::sync::mpsc::UnboundedSender<AsyncNamespaceJob>>,
+    thread: Option<thread::JoinHandle<Result<()>>>,
+}
+
+struct BlockingNamespaceExecutor {
+    namespace: NetworkNamespaceHandle,
+    workers: Mutex<Vec<BlockingNamespaceWorker>>,
+}
+
+struct BlockingNamespaceWorker {
+    jobs: Option<mpsc::Sender<BlockingNamespaceJob>>,
+    pending: Arc<AtomicUsize>,
+    thread: Option<thread::JoinHandle<Result<()>>>,
 }
 
 impl NamespaceExecutor {
@@ -69,10 +88,6 @@ impl NamespaceExecutor {
     }
 }
 
-pub struct HostTask<T> {
-    result: tokio::sync::oneshot::Receiver<Result<T>>,
-}
-
 impl<T> HostTask<T> {
     pub async fn join(self) -> Result<T> {
         self.result
@@ -94,38 +109,6 @@ impl<T> Future for HostTask<T> {
                 .and_then(|res| res)
         })
     }
-}
-
-fn build_runtime(config: RuntimeConfig) -> Result<tokio::runtime::Runtime> {
-    match config {
-        RuntimeConfig::CurrentThread => tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .context("failed to build current-thread namespace executor"),
-        RuntimeConfig::MultiThread { worker_threads } => {
-            if worker_threads == 0 {
-                bail!("worker_threads must be greater than 0");
-            }
-
-            tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(worker_threads)
-                .enable_all()
-                .build()
-                .context("failed to build multi-thread namespace executor")
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum RuntimeConfig {
-    CurrentThread,
-    MultiThread { worker_threads: usize },
-}
-
-#[derive(Debug)]
-struct AsyncNamespaceExecutor {
-    jobs: Option<tokio::sync::mpsc::UnboundedSender<AsyncNamespaceJob>>,
-    thread: Option<thread::JoinHandle<Result<()>>>,
 }
 
 impl AsyncNamespaceExecutor {
@@ -215,11 +198,6 @@ impl Drop for AsyncNamespaceExecutor {
     }
 }
 
-struct BlockingNamespaceExecutor {
-    namespace: NetworkNamespaceHandle,
-    workers: Mutex<Vec<BlockingNamespaceWorker>>,
-}
-
 impl BlockingNamespaceExecutor {
     fn new(namespace: NetworkNamespaceHandle) -> Result<Self> {
         Ok(Self {
@@ -279,12 +257,6 @@ impl fmt::Debug for BlockingNamespaceExecutor {
             .field("worker_count", &worker_count)
             .finish()
     }
-}
-
-struct BlockingNamespaceWorker {
-    jobs: Option<mpsc::Sender<BlockingNamespaceJob>>,
-    pending: Arc<AtomicUsize>,
-    thread: Option<thread::JoinHandle<Result<()>>>,
 }
 
 impl BlockingNamespaceWorker {
@@ -371,5 +343,33 @@ impl Drop for BlockingNamespaceWorker {
         if let Some(thread) = self.thread.take() {
             log_thread_join("blocking namespace worker", thread.join());
         }
+    }
+}
+
+fn build_runtime(config: RuntimeConfig) -> Result<tokio::runtime::Runtime> {
+    match config {
+        RuntimeConfig::CurrentThread => tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .context("failed to build current-thread namespace executor"),
+        RuntimeConfig::MultiThread { worker_threads } => {
+            if worker_threads == 0 {
+                bail!("worker_threads must be greater than 0");
+            }
+
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(worker_threads)
+                .enable_all()
+                .build()
+                .context("failed to build multi-thread namespace executor")
+        }
+    }
+}
+
+fn log_thread_join(name: &str, result: thread::Result<Result<()>>) {
+    match result {
+        Ok(Ok(())) => {}
+        Ok(Err(err)) => eprintln!("{} failed: {}", name, err),
+        Err(_) => eprintln!("{} panicked", name),
     }
 }

@@ -11,18 +11,21 @@ const THREAD_SELF_NS_PATH: &str = "/proc/thread-self/ns/net";
 
 static NETNS_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-fn unique_netns_name(label: &str) -> String {
-    let id = NETNS_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let pid = std::process::id();
-
-    format!("net-lab-{}-{}-{}", label, pid, id)
-}
-
 #[derive(Debug)]
 pub struct NetworkNamespace {
     pub(crate) name: String,
     path: PathBuf,
     file: Arc<File>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct NetworkNamespaceHandle {
+    file: Arc<File>,
+}
+
+#[derive(Debug)]
+pub(crate) struct NetworkNamespaceContext {
+    original: Option<File>,
 }
 
 impl NetworkNamespace {
@@ -65,20 +68,10 @@ impl Drop for NetworkNamespace {
     }
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct NetworkNamespaceHandle {
-    file: Arc<File>,
-}
-
 impl NetworkNamespaceHandle {
     pub(crate) fn enter(&self) -> Result<NetworkNamespaceContext> {
         NetworkNamespaceContext::enter(&self.file)
     }
-}
-
-#[derive(Debug)]
-pub(crate) struct NetworkNamespaceContext {
-    original: Option<File>,
 }
 
 impl NetworkNamespaceContext {
@@ -113,4 +106,11 @@ impl Drop for NetworkNamespaceContext {
             eprintln!("failed to restore original network namespace: {}", err);
         }
     }
+}
+
+fn unique_netns_name(label: &str) -> String {
+    let id = NETNS_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let pid = std::process::id();
+
+    format!("netlab-{}-{}-{}", label, pid, id)
 }

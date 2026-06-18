@@ -1,7 +1,7 @@
 #![cfg(target_os = "linux")]
 
 use anyhow::Result;
-use net_lab::{
+use netlab::{
     DirectLink, Host,
     testing::{run_udp_echo_client, run_udp_echo_server},
 };
@@ -9,7 +9,6 @@ use std::net::SocketAddr;
 use tokio::sync::oneshot;
 
 #[tokio::test]
-#[ignore = "requires Linux network namespace privileges"]
 async fn direct_link_connects_host_addresses() -> Result<()> {
     let host1 = Host::new("host1").await?;
     let host2 = Host::new("host2").await?;

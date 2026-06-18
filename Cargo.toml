@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["app", "cli", "core", "net-lab"]
+members = ["app", "cli", "core", "netlab"]
 
 [workspace.package]
 version = "0.0.1"
@@ -13,4 +13,4 @@ readme = "README.md"
 
 [workspace.dependencies]
 lattis-core = { version = "0.0.1", path = "core" }
-net-lab = { version = "0.0.1", path = "net-lab" }
+netlab = { version = "0.0.1", path = "netlab" }

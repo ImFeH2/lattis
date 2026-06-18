@@ -1,5 +1,5 @@
 [package]
-name = "net-lab"
+name = "netlab"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,6 +7,9 @@ description.workspace = true
 license.workspace = true
 repository.workspace = true
 readme.workspace = true
+
+[features]
+netlab-tests = []
 
 [dependencies]
 anyhow = "1"
@@ -25,3 +28,8 @@ tokio = { version = "1", features = [
     "sync",
     "time",
 ] }
+
+[[test]]
+name = "direct_link"
+path = "tests/direct_link.rs"
+required-features = ["netlab-tests"]

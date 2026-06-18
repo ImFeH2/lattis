@@ -16,11 +16,32 @@ use rtnetlink::{LinkUnspec, LinkVeth, packet_route::link::LinkAttribute};
 use crate::executor::NamespaceExecutor;
 pub use crate::executor::{HostTask, RuntimeConfig};
 
+static VETH_ID: AtomicU64 = AtomicU64::new(0);
+
 #[derive(Debug)]
 struct Node {
     label: String,
     executor: NamespaceExecutor,
     namespace: NetworkNamespace,
+}
+
+#[derive(Debug, Clone)]
+pub struct Host {
+    node: Arc<Node>,
+}
+
+pub struct DirectLink;
+
+#[derive(Debug)]
+pub struct Interface {
+    name: String,
+    host: Host,
+}
+
+pub struct InterfaceConfig<'a> {
+    interface: &'a Interface,
+    address: Vec<(IpAddr, u8)>,
+    up: Option<bool>,
 }
 
 impl Node {
@@ -38,11 +59,6 @@ impl Node {
             })
             .await
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct Host {
-    node: Arc<Node>,
 }
 
 impl Host {
@@ -93,38 +109,6 @@ impl Host {
         self.node.executor.spawn_blocking(f)
     }
 }
-
-static VETH_ID: AtomicU64 = AtomicU64::new(0);
-
-async fn link_exists(handle: &rtnetlink::Handle, name: &str) -> Result<bool> {
-    let mut links = handle.link().get().execute();
-
-    while let Some(link) = links.try_next().await? {
-        if link
-            .attributes
-            .iter()
-            .any(|attr| matches!(attr, LinkAttribute::IfName(if_name) if if_name == name))
-        {
-            return Ok(true);
-        }
-    }
-
-    Ok(false)
-}
-
-async fn allocate_veth_names(handle: &rtnetlink::Handle) -> Result<(String, String)> {
-    loop {
-        let id = VETH_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let name1 = format!("veth{}a", id);
-        let name2 = format!("veth{}b", id);
-
-        if !link_exists(handle, &name1).await? && !link_exists(handle, &name2).await? {
-            return Ok((name1, name2));
-        }
-    }
-}
-
-pub struct DirectLink;
 
 impl DirectLink {
     pub async fn connect(host1: &Host, host2: &Host) -> Result<(Interface, Interface)> {
@@ -203,12 +187,6 @@ impl DirectLink {
 
         Ok((iface1, iface2))
     }
-}
-
-#[derive(Debug)]
-pub struct Interface {
-    name: String,
-    host: Host,
 }
 
 impl Interface {
@@ -307,12 +285,6 @@ impl Interface {
     }
 }
 
-pub struct InterfaceConfig<'a> {
-    interface: &'a Interface,
-    address: Vec<(IpAddr, u8)>,
-    up: Option<bool>,
-}
-
 impl<'a> InterfaceConfig<'a> {
     pub fn add_address(mut self, address: IpAddr, prefix_len: u8) -> Self {
         self.address.push((address, prefix_len));
@@ -342,5 +314,33 @@ impl<'a> InterfaceConfig<'a> {
             }
         }
         Ok(())
+    }
+}
+
+async fn link_exists(handle: &rtnetlink::Handle, name: &str) -> Result<bool> {
+    let mut links = handle.link().get().execute();
+
+    while let Some(link) = links.try_next().await? {
+        if link
+            .attributes
+            .iter()
+            .any(|attr| matches!(attr, LinkAttribute::IfName(if_name) if if_name == name))
+        {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+async fn allocate_veth_names(handle: &rtnetlink::Handle) -> Result<(String, String)> {
+    loop {
+        let id = VETH_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let name1 = format!("veth{}a", id);
+        let name2 = format!("veth{}b", id);
+
+        if !link_exists(handle, &name1).await? && !link_exists(handle, &name2).await? {
+            return Ok((name1, name2));
+        }
     }
 }

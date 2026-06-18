@@ -9,7 +9,7 @@ use ipnet::IpNet;
     target_os = "openbsd",
     target_os = "netbsd",
 ))]
-pub fn open_tun_device(name: &str, addresses: Vec<IpNet>) -> Result<tun_rs::AsyncDevice> {
+pub(super) fn open_tun_device(name: &str, addresses: Vec<IpNet>) -> Result<tun_rs::AsyncDevice> {
     if addresses.is_empty() {
         bail!("At least one TUN address must be configured");
     }
@@ -34,6 +34,6 @@ pub fn open_tun_device(name: &str, addresses: Vec<IpNet>) -> Result<tun_rs::Asyn
     target_os = "openbsd",
     target_os = "netbsd",
 )))]
-pub fn open_tun_device(_name: &str, _addresses: Vec<IpNet>) -> Result<tun_rs::AsyncDevice> {
+pub(super) fn open_tun_device(_name: &str, _addresses: Vec<IpNet>) -> Result<tun_rs::AsyncDevice> {
     bail!("Creating a TUN device by name is not supported on this platform");
 }
