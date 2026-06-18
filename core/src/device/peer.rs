@@ -193,3 +193,129 @@ fn next_peer_index(peers: &HashMap<PublicKey, Arc<Peer>>) -> Result<u32> {
         .checked_add(1)
         .context("WireGuard peer index is exhausted")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::DeviceID;
+
+    fn endpoint(port: u16) -> SocketAddr {
+        SocketAddr::from(([192, 0, 2, 1], port))
+    }
+
+    fn peer_info(public_key: PublicKey, address: &str, endpoint: SocketAddr) -> PeerInfo {
+        PeerInfo {
+            device_id: DeviceID::random(),
+            public_key,
+            virtual_addresses: vec![address.parse().unwrap()],
+            endpoints: vec![endpoint],
+        }
+    }
+
+    fn private_key() -> StaticSecret {
+        StaticSecret::from([7; 32])
+    }
+
+    fn public_key(value: u8) -> PublicKey {
+        PublicKey::from([value; 32])
+    }
+
+    #[test]
+    fn upsert_adds_peer_and_finds_it_by_destination_endpoint_and_index() -> Result<()> {
+        let table = PeerTable::new(private_key());
+        table.upsert(peer_info(public_key(1), "100.64.0.1/32", endpoint(1001)))?;
+
+        let by_destination = table.find_by_destination("100.64.0.1".parse()?)?;
+        let by_endpoint = table.find_by_endpoint(endpoint(1001))?;
+        let by_index = table.find_by_index(1)?;
+
+        assert!(by_destination.is_some());
+        assert!(by_endpoint.is_some());
+        assert!(by_index.is_some());
+        assert_eq!(table.all()?.len(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn find_by_destination_returns_none_for_unmatched_address() -> Result<()> {
+        let table = PeerTable::new(private_key());
+        table.upsert(peer_info(public_key(1), "100.64.0.1/32", endpoint(1001)))?;
+
+        assert!(table.find_by_destination("100.64.0.2".parse()?)?.is_none());
+
+        Ok(())
+    }
+
+    #[test]
+    fn upsert_updates_existing_peer_in_place() -> Result<()> {
+        let table = PeerTable::new(private_key());
+        table.upsert(peer_info(public_key(1), "100.64.0.1/32", endpoint(1001)))?;
+        table.upsert(peer_info(public_key(1), "100.64.0.2/32", endpoint(1002)))?;
+
+        assert_eq!(table.all()?.len(), 1);
+        assert!(table.find_by_destination("100.64.0.1".parse()?)?.is_none());
+        assert!(table.find_by_destination("100.64.0.2".parse()?)?.is_some());
+        assert!(table.find_by_endpoint(endpoint(1001))?.is_none());
+        assert!(table.find_by_endpoint(endpoint(1002))?.is_some());
+        assert!(table.find_by_index(1)?.is_some());
+
+        Ok(())
+    }
+
+    #[test]
+    fn replace_removes_missing_peers_and_keeps_updated_peers() -> Result<()> {
+        let table = PeerTable::new(private_key());
+        table.replace(vec![
+            peer_info(public_key(1), "100.64.0.1/32", endpoint(1001)),
+            peer_info(public_key(2), "100.64.0.2/32", endpoint(1002)),
+        ])?;
+
+        let first = table
+            .find_by_endpoint(endpoint(1001))?
+            .expect("peer exists");
+        table.replace(vec![
+            peer_info(public_key(1), "100.64.0.10/32", endpoint(1010)),
+            peer_info(public_key(3), "100.64.0.3/32", endpoint(1003)),
+        ])?;
+
+        let updated_first = table
+            .find_by_endpoint(endpoint(1010))?
+            .expect("updated peer exists");
+        assert!(Arc::ptr_eq(&first, &updated_first));
+        assert_eq!(table.all()?.len(), 2);
+        assert!(table.find_by_endpoint(endpoint(1002))?.is_none());
+        assert!(table.find_by_destination("100.64.0.10".parse()?)?.is_some());
+        assert!(table.find_by_destination("100.64.0.3".parse()?)?.is_some());
+
+        Ok(())
+    }
+
+    #[test]
+    fn replace_assigns_incrementing_indexes_to_new_peers() -> Result<()> {
+        let table = PeerTable::new(private_key());
+        table.replace(vec![
+            peer_info(public_key(1), "100.64.0.1/32", endpoint(1001)),
+            peer_info(public_key(2), "100.64.0.2/32", endpoint(1002)),
+        ])?;
+
+        assert!(table.find_by_index(1)?.is_some());
+        assert!(table.find_by_index(2)?.is_some());
+        assert!(table.find_by_index(3)?.is_none());
+
+        Ok(())
+    }
+
+    #[test]
+    fn upsert_rejects_peer_without_endpoint() {
+        let table = PeerTable::new(private_key());
+        let result = table.upsert(PeerInfo {
+            device_id: DeviceID::random(),
+            public_key: public_key(1),
+            virtual_addresses: vec!["100.64.0.1/32".parse().unwrap()],
+            endpoints: Vec::new(),
+        });
+
+        assert!(result.is_err());
+    }
+}

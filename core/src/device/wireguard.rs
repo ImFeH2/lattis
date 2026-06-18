@@ -160,3 +160,58 @@ fn is_wireguard_handshake_response(result: &TunnResult<'_>) -> bool {
 
     message_type == WIREGUARD_HANDSHAKE_RESPONSE
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn packet(message_type: u32, receiver_index: Option<u32>, len: usize) -> Vec<u8> {
+        let mut packet = vec![0; len];
+        packet[..4].copy_from_slice(&message_type.to_le_bytes());
+
+        if let Some(receiver_index) = receiver_index {
+            let offset = if message_type == WIREGUARD_HANDSHAKE_RESPONSE {
+                8
+            } else {
+                4
+            };
+            packet[offset..offset + 4].copy_from_slice(&receiver_index.to_le_bytes());
+        }
+
+        packet
+    }
+
+    #[test]
+    fn packet_receiver_index_ignores_handshake_init() {
+        let packet = packet(1, None, 148);
+
+        assert_eq!(packet_receiver_index(&packet), None);
+    }
+
+    #[test]
+    fn packet_receiver_index_reads_handshake_response() {
+        let packet = packet(WIREGUARD_HANDSHAKE_RESPONSE, Some(0x0102_0304), 92);
+
+        assert_eq!(packet_receiver_index(&packet), Some(0x0102_0304));
+    }
+
+    #[test]
+    fn packet_receiver_index_reads_cookie_reply() {
+        let packet = packet(3, Some(0x0102_0304), 64);
+
+        assert_eq!(packet_receiver_index(&packet), Some(0x0102_0304));
+    }
+
+    #[test]
+    fn packet_receiver_index_reads_data_packet() {
+        let packet = packet(4, Some(0x0102_0304), 32);
+
+        assert_eq!(packet_receiver_index(&packet), Some(0x0102_0304));
+    }
+
+    #[test]
+    fn packet_receiver_index_rejects_short_or_unknown_packets() {
+        assert_eq!(packet_receiver_index(&[1, 2, 3]), None);
+        assert_eq!(packet_receiver_index(&packet(99, None, 16)), None);
+    }
+}

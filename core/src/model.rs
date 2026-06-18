@@ -46,3 +46,73 @@ impl DeviceID {
         Self(Uuid::new_v4())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn peer() -> PeerInfo {
+        PeerInfo {
+            device_id: DeviceID::random(),
+            public_key: PublicKey::from([1; 32]),
+            virtual_addresses: vec!["100.64.0.1/32".parse().unwrap()],
+            endpoints: vec!["192.0.2.1:1001".parse().unwrap()],
+        }
+    }
+
+    #[test]
+    fn device_id_display_matches_json_string() -> anyhow::Result<()> {
+        let device_id = DeviceID::random();
+        let value = serde_json::to_value(&device_id)?;
+
+        assert_eq!(value, serde_json::Value::String(device_id.to_string()));
+        assert_eq!(serde_json::from_value::<DeviceID>(value)?, device_id);
+
+        Ok(())
+    }
+
+    #[test]
+    fn random_device_ids_are_unique() {
+        assert_ne!(DeviceID::random(), DeviceID::random());
+    }
+
+    #[test]
+    fn lattis_network_constants_describe_carrier_grade_nat_block() -> anyhow::Result<()> {
+        let network = ipnet::Ipv4Net::new(LATTIS_NETWORK_PREFIX, LATTIS_NETWORK_PREFIX_LEN)?;
+
+        assert_eq!(LATTIS_NETWORK_PREFIX, Ipv4Addr::new(100, 64, 0, 0));
+        assert_eq!(LATTIS_NETWORK_PREFIX_LEN, 10);
+        assert_eq!(LATTIS_NETWORK_HOST_BITS, 22);
+        assert_eq!(LATTIS_NETWORK_ADDRESS_COUNT, 4_194_304);
+        assert_eq!(network.to_string(), "100.64.0.0/10");
+
+        Ok(())
+    }
+
+    #[test]
+    fn peer_info_json_round_trips() -> anyhow::Result<()> {
+        let peer = peer();
+        let json = serde_json::to_string(&peer)?;
+
+        assert_eq!(serde_json::from_str::<PeerInfo>(&json)?, peer);
+
+        Ok(())
+    }
+
+    #[test]
+    fn register_device_response_json_round_trips() -> anyhow::Result<()> {
+        let device = peer();
+        let response = RegisterDeviceResponse {
+            device: device.clone(),
+            peers: vec![peer()],
+        };
+        let json = serde_json::to_string(&response)?;
+
+        assert_eq!(
+            serde_json::from_str::<RegisterDeviceResponse>(&json)?,
+            response
+        );
+
+        Ok(())
+    }
+}

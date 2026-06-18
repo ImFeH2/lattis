@@ -163,3 +163,217 @@ fn dedup_endpoints(endpoints: &mut Vec<std::net::SocketAddr>) {
     let mut seen = std::collections::HashSet::with_capacity(endpoints.len());
     endpoints.retain(|endpoint| seen.insert(*endpoint));
 }
+
+#[cfg(test)]
+mod tests {
+    use std::net::SocketAddr;
+
+    use super::*;
+    use crate::model::LATTIS_NETWORK_PREFIX_LEN;
+
+    fn endpoint(port: u16) -> SocketAddr {
+        SocketAddr::from(([192, 0, 2, 1], port))
+    }
+
+    fn public_key(value: u8) -> PublicKey {
+        PublicKey::from([value; 32])
+    }
+
+    fn request(
+        device_id: DeviceID,
+        public_key: PublicKey,
+        endpoints: Vec<SocketAddr>,
+    ) -> RegisterDeviceRequest {
+        RegisterDeviceRequest {
+            device_id,
+            public_key,
+            endpoints,
+        }
+    }
+
+    #[tokio::test]
+    async fn register_returns_device_and_no_peers_for_first_device() -> Result<()> {
+        let coordinator = Coordinator::new();
+        let response = coordinator
+            .register(request(
+                DeviceID::random(),
+                public_key(1),
+                vec![endpoint(1001)],
+            ))
+            .await?;
+
+        assert!(response.peers.is_empty());
+        assert_eq!(response.device.public_key, public_key(1));
+        assert_eq!(response.device.endpoints, vec![endpoint(1001)]);
+
+        let address = response.device.virtual_addresses[0];
+        let IpNet::V4(address) = address else {
+            panic!("expected IPv4 virtual address");
+        };
+        let network = Ipv4Net::new(LATTIS_NETWORK_PREFIX, LATTIS_NETWORK_PREFIX_LEN)?;
+        assert_eq!(address.prefix_len(), 32);
+        assert!(network.contains(&address.addr()));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn register_returns_existing_peers_and_excludes_self() -> Result<()> {
+        let coordinator = Coordinator::new();
+        let first = coordinator
+            .register(request(
+                DeviceID::random(),
+                public_key(1),
+                vec![endpoint(1001)],
+            ))
+            .await?;
+        let second = coordinator
+            .register(request(
+                DeviceID::random(),
+                public_key(2),
+                vec![endpoint(1002)],
+            ))
+            .await?;
+
+        assert_eq!(second.peers, vec![first.device.clone()]);
+        assert!(
+            !second
+                .peers
+                .iter()
+                .any(|peer| peer.device_id == second.device.device_id)
+        );
+
+        let first_peers = coordinator.peers_for(&first.device.device_id).await?;
+        assert_eq!(first_peers, vec![second.device]);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn register_reuses_virtual_addresses_for_existing_device() -> Result<()> {
+        let coordinator = Coordinator::new();
+        let device_id = DeviceID::random();
+        let first = coordinator
+            .register(request(
+                device_id.clone(),
+                public_key(1),
+                vec![endpoint(1001)],
+            ))
+            .await?;
+        let second = coordinator
+            .register(request(device_id, public_key(2), vec![endpoint(1002)]))
+            .await?;
+
+        assert_eq!(
+            second.device.virtual_addresses,
+            first.device.virtual_addresses
+        );
+        assert_eq!(second.device.public_key, public_key(2));
+        assert_eq!(second.device.endpoints, vec![endpoint(1002)]);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn register_rejects_public_key_used_by_another_device() -> Result<()> {
+        let coordinator = Coordinator::new();
+        coordinator
+            .register(request(
+                DeviceID::random(),
+                public_key(1),
+                vec![endpoint(1001)],
+            ))
+            .await?;
+
+        let result = coordinator
+            .register(request(
+                DeviceID::random(),
+                public_key(1),
+                vec![endpoint(1002)],
+            ))
+            .await;
+
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn register_rejects_empty_endpoints() {
+        let coordinator = Coordinator::new();
+        let result = coordinator
+            .register(request(DeviceID::random(), public_key(1), Vec::new()))
+            .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn register_deduplicates_endpoints() -> Result<()> {
+        let coordinator = Coordinator::new();
+        let response = coordinator
+            .register(request(
+                DeviceID::random(),
+                public_key(1),
+                vec![endpoint(1001), endpoint(1001), endpoint(1002)],
+            ))
+            .await?;
+
+        assert_eq!(
+            response.device.endpoints,
+            vec![endpoint(1001), endpoint(1002)]
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn peers_for_rejects_unknown_device() {
+        let coordinator = Coordinator::new();
+        let result = coordinator.peers_for(&DeviceID::random()).await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn register_publishes_peer_update() -> Result<()> {
+        let coordinator = Coordinator::new();
+        let mut events = coordinator.subscribe_peer_events();
+        let response = coordinator
+            .register(request(
+                DeviceID::random(),
+                public_key(1),
+                vec![endpoint(1001)],
+            ))
+            .await?;
+
+        assert_eq!(events.recv().await?, response.device);
+
+        Ok(())
+    }
+
+    #[test]
+    fn uses_virtual_address_matches_ipv4_host_address_only() {
+        let device_id = DeviceID::random();
+        let peers = HashMap::from([(
+            device_id.clone(),
+            PeerInfo {
+                device_id,
+                public_key: public_key(1),
+                virtual_addresses: vec![
+                    "100.64.0.1/32".parse().unwrap(),
+                    "fd00::1/128".parse().unwrap(),
+                ],
+                endpoints: vec![endpoint(1001)],
+            },
+        )]);
+
+        assert!(uses_virtual_address(
+            &peers,
+            std::net::Ipv4Addr::new(100, 64, 0, 1)
+        ));
+        assert!(!uses_virtual_address(
+            &peers,
+            std::net::Ipv4Addr::new(100, 64, 0, 2)
+        ));
+    }
+}
