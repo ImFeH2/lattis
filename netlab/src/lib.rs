@@ -7,7 +7,6 @@ mod netlink;
 mod netns;
 mod node;
 mod router;
-pub mod testing;
 
 pub use crate::executor::{HostTask, RuntimeConfig};
 pub use crate::host::Host;
