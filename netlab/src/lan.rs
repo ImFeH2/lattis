@@ -104,25 +104,6 @@ impl Lan {
         Ok((node_interface, lan_port))
     }
 
-    pub(crate) fn allocate_gateway_address(&self) -> Result<Ipv4Net> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("lan state lock poisoned"))?;
-
-        ensure!(state.gateway.is_none(), "lan already has a gateway");
-
-        let address = self
-            .network
-            .hosts()
-            .nth(state.next_host)
-            .context("lan address pool is exhausted")?;
-        state.next_host += 1;
-        state.gateway = Some(address);
-
-        Ok(Ipv4Net::new(address, self.network.prefix_len())?)
-    }
-
     pub(crate) fn ensure_gateway_available(&self) -> Result<()> {
         let state = self
             .state
@@ -130,6 +111,35 @@ impl Lan {
             .map_err(|_| anyhow::anyhow!("lan state lock poisoned"))?;
 
         ensure!(state.gateway.is_none(), "lan already has a gateway");
+
+        Ok(())
+    }
+
+    pub(crate) fn allocate_address(&self) -> Result<Ipv4Net> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("lan state lock poisoned"))?;
+
+        let address = self
+            .network
+            .hosts()
+            .nth(state.next_host)
+            .context("lan address pool is exhausted")?;
+        state.next_host += 1;
+
+        Ok(Ipv4Net::new(address, self.network.prefix_len())?)
+    }
+
+    pub(crate) fn set_gateway(&self, gateway: Ipv4Addr) -> Result<()> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| anyhow::anyhow!("lan state lock poisoned"))?;
+
+        ensure!(state.gateway.is_none(), "lan already has a gateway");
+
+        state.gateway = Some(gateway);
 
         Ok(())
     }
@@ -167,22 +177,6 @@ impl Lan {
                 Ok(())
             })
             .await
-    }
-
-    fn allocate_address(&self) -> Result<Ipv4Net> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("lan state lock poisoned"))?;
-        let address = self
-            .network
-            .hosts()
-            .nth(state.next_host)
-            .context("lan address pool is exhausted")?;
-
-        state.next_host += 1;
-
-        Ok(Ipv4Net::new(address, self.network.prefix_len())?)
     }
 
     fn gateway(&self) -> Result<Option<Ipv4Addr>> {
