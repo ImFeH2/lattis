@@ -10,23 +10,9 @@ pub struct Interface {
     pub(crate) host: Host,
 }
 
-pub struct InterfaceConfig<'a> {
-    interface: &'a Interface,
-    addresses: Vec<IpNet>,
-    up: Option<bool>,
-}
-
 impl Interface {
     pub(crate) fn new(name: String, host: Host) -> Self {
         Self { name, host }
-    }
-
-    pub fn configure(&self) -> InterfaceConfig<'_> {
-        InterfaceConfig {
-            interface: self,
-            addresses: Vec::new(),
-            up: None,
-        }
     }
 
     pub async fn index(&self) -> Result<u32> {
@@ -107,38 +93,6 @@ impl Interface {
             .await?;
 
         self.name = new_name;
-        Ok(())
-    }
-}
-
-impl<'a> InterfaceConfig<'a> {
-    pub fn add_address(mut self, address: IpNet) -> Self {
-        self.addresses.push(address);
-        self
-    }
-
-    pub fn up(mut self) -> Self {
-        self.up = Some(true);
-        self
-    }
-
-    pub fn down(mut self) -> Self {
-        self.up = Some(false);
-        self
-    }
-
-    pub async fn apply(self) -> Result<()> {
-        for address in self.addresses {
-            self.interface.add_address(address).await?;
-        }
-
-        if let Some(up) = self.up {
-            if up {
-                self.interface.up().await?;
-            } else {
-                self.interface.down().await?;
-            }
-        }
         Ok(())
     }
 }

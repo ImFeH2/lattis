@@ -11,5 +11,5 @@ pub mod testing;
 pub use crate::direct_link::DirectLink;
 pub use crate::executor::{HostTask, RuntimeConfig};
 pub use crate::host::Host;
-pub use crate::interface::{Interface, InterfaceConfig};
+pub use crate::interface::Interface;
 pub use crate::lan::Lan;

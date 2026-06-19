@@ -19,24 +19,12 @@ async fn lan_connects_multiple_host_addresses() -> Result<()> {
     let iface2 = lan.connect(&host2).await?;
     let iface3 = lan.connect(&host3).await?;
 
-    iface1
-        .configure()
-        .add_address("10.20.0.1/24".parse()?)
-        .up()
-        .apply()
-        .await?;
-    iface2
-        .configure()
-        .add_address("10.20.0.2/24".parse()?)
-        .up()
-        .apply()
-        .await?;
-    iface3
-        .configure()
-        .add_address("10.20.0.3/24".parse()?)
-        .up()
-        .apply()
-        .await?;
+    iface1.add_address("10.20.0.1/24".parse()?).await?;
+    iface1.up().await?;
+    iface2.add_address("10.20.0.2/24".parse()?).await?;
+    iface2.up().await?;
+    iface3.add_address("10.20.0.3/24".parse()?).await?;
+    iface3.up().await?;
 
     run_echo_pair(&host1, "10.20.0.1:8000", &host2, "10.20.0.2:9000").await?;
     run_echo_pair(&host3, "10.20.0.3:8001", &host2, "10.20.0.2:9001").await?;

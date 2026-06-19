@@ -18,19 +18,11 @@ async fn direct_link_connects_host_addresses() -> Result<()> {
 
     let (iface1, iface2) = DirectLink::connect(&host1, &host2).await?;
 
-    iface1
-        .configure()
-        .add_address("10.10.0.1/24".parse()?)
-        .up()
-        .apply()
-        .await?;
+    iface1.add_address("10.10.0.1/24".parse()?).await?;
+    iface1.up().await?;
 
-    iface2
-        .configure()
-        .add_address("10.10.0.2/24".parse()?)
-        .up()
-        .apply()
-        .await?;
+    iface2.add_address("10.10.0.2/24".parse()?).await?;
+    iface2.up().await?;
 
     let host1_socket: SocketAddr = format!("{host1_ip}:8000").parse()?;
     let host2_socket: SocketAddr = format!("{host2_ip}:9000").parse()?;
