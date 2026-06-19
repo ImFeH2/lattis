@@ -13,7 +13,6 @@ netlab-tests = []
 
 [dependencies]
 anyhow = "1"
-async-trait = "0.1"
 futures-util = "0.3"
 ipnet = "2"
 nix = { version = "0.30", default-features = false, features = [
@@ -22,6 +21,7 @@ nix = { version = "0.30", default-features = false, features = [
     "sched",
 ] }
 rtnetlink = "0.21"
+sysctl = "0.7"
 tokio = { version = "1", features = [
     "macros",
     "net",
@@ -39,4 +39,9 @@ required-features = ["netlab-tests"]
 [[test]]
 name = "lan"
 path = "tests/lan.rs"
+required-features = ["netlab-tests"]
+
+[[test]]
+name = "router"
+path = "tests/router.rs"
 required-features = ["netlab-tests"]

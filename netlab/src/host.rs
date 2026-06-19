@@ -1,10 +1,8 @@
 use std::{future::Future, sync::Arc};
 
 use anyhow::Result;
-use async_trait::async_trait;
 
 use crate::{
-    connect::ConnectableInternals,
     executor::{HostTask, RuntimeConfig},
     node::Node,
 };
@@ -15,11 +13,19 @@ pub struct Host {
 }
 
 impl Host {
-    pub async fn new(name: &str) -> Result<Self> {
-        Self::new_with_runtime(name, RuntimeConfig::CurrentThread).await
+    pub async fn new() -> Result<Self> {
+        Self::with_runtime(RuntimeConfig::CurrentThread).await
     }
 
-    pub async fn new_with_runtime(name: &str, config: RuntimeConfig) -> Result<Self> {
+    pub async fn named(name: &str) -> Result<Self> {
+        Self::named_with_runtime(name, RuntimeConfig::CurrentThread).await
+    }
+
+    pub async fn with_runtime(config: RuntimeConfig) -> Result<Self> {
+        Self::named_with_runtime("host", config).await
+    }
+
+    pub async fn named_with_runtime(name: &str, config: RuntimeConfig) -> Result<Self> {
         Ok(Self {
             node: Node::new(name, config).await?,
         })
@@ -27,6 +33,10 @@ impl Host {
 
     pub fn name(&self) -> &str {
         &self.node.label
+    }
+
+    pub(crate) fn node(&self) -> Arc<Node> {
+        self.node.clone()
     }
 
     pub fn spawn<T, F, Fut>(&self, f: F) -> Result<HostTask<T>>
@@ -53,12 +63,5 @@ impl Host {
         F: FnOnce() -> Result<T> + Send + 'static,
     {
         self.node.executor.spawn_blocking(f)
-    }
-}
-
-#[async_trait]
-impl ConnectableInternals for Host {
-    fn node(&self) -> Arc<Node> {
-        self.node.clone()
     }
 }

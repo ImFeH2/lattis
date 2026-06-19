@@ -1,8 +1,8 @@
+use std::{net::Ipv4Addr, sync::Arc};
+
 use anyhow::Result;
 use ipnet::IpNet;
-use rtnetlink::LinkUnspec;
-
-use std::sync::Arc;
+use rtnetlink::{LinkUnspec, RouteMessageBuilder};
 
 use crate::{netlink::link_index, node::Node};
 
@@ -71,6 +71,23 @@ impl Interface {
                     .add(index, ip, prefix_len)
                     .execute()
                     .await?;
+                Ok(())
+            })
+            .await
+    }
+
+    pub async fn add_default_route(&self, gateway: Ipv4Addr) -> Result<()> {
+        let index = self.index().await?;
+
+        self.node
+            .run_netlink(move |handle| async move {
+                let route = RouteMessageBuilder::<Ipv4Addr>::new()
+                    .gateway(gateway)
+                    .output_interface(index)
+                    .build();
+
+                handle.route().add(route).replace().execute().await?;
+
                 Ok(())
             })
             .await
