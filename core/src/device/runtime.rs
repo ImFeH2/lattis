@@ -28,6 +28,8 @@ const WIREGUARD_TIMER_INTERVAL: Duration = Duration::from_millis(250);
 
 pub struct Device {
     _route: RouteGuard,
+    peer_info: PeerInfo,
+    peers: Arc<PeerTable>,
     peer_events: JoinHandle<Result<()>>,
     outbound: JoinHandle<Result<()>>,
     inbound: JoinHandle<Result<()>>,
@@ -59,25 +61,45 @@ impl Device {
             })
             .await?;
         let peer_events = coordinator.peer_events(&device_id.to_string())?;
-        let packet_device =
-            open_tun_device(&interface_name, registration.device.virtual_addresses)?;
+        let packet_device = open_tun_device(
+            &interface_name,
+            registration.device.virtual_addresses.clone(),
+        )?;
         let route = add_lattis_network_route(&packet_device).await?;
+
+        let peer_info = registration.device;
+        let peers = Arc::new(PeerTable::new(private_key));
+        peers.replace(registration.peers)?;
 
         let tasks = Self::spawn_runtime(
             listen_port,
-            private_key,
-            registration.peers,
+            peers.clone(),
             peer_events,
             Arc::new(packet_device),
         )
         .await?;
 
-        Ok(Self::from_runtime(route, tasks))
+        Ok(Self::from_runtime(peer_info, peers, route, tasks))
     }
 
-    fn from_runtime(route: RouteGuard, tasks: DeviceTasks) -> Self {
+    pub fn peer_info(&self) -> PeerInfo {
+        self.peer_info.clone()
+    }
+
+    pub fn peers(&self) -> Result<Vec<PeerInfo>> {
+        self.peers.all_infos()
+    }
+
+    fn from_runtime(
+        peer_info: PeerInfo,
+        peers: Arc<PeerTable>,
+        route: RouteGuard,
+        tasks: DeviceTasks,
+    ) -> Self {
         Self {
             _route: route,
+            peer_info,
+            peers,
             peer_events: tasks.peer_events,
             outbound: tasks.outbound,
             inbound: tasks.inbound,
@@ -87,16 +109,13 @@ impl Device {
 
     async fn spawn_runtime(
         listen_port: u16,
-        private_key: StaticSecret,
-        initial_peers: Vec<PeerInfo>,
+        peers: Arc<PeerTable>,
         mut peer_events: super::coordinator::PeerEventStream,
         packet_device: Arc<dyn PacketDevice>,
     ) -> Result<DeviceTasks> {
         let socket_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), listen_port);
         let socket = UdpSocket::bind(&socket_address).await?;
 
-        let peers = Arc::new(PeerTable::new(private_key));
-        peers.replace(initial_peers)?;
         let socket = Arc::new(socket);
 
         let peer_events = {

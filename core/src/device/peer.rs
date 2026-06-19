@@ -1,6 +1,5 @@
 use anyhow::{Context, Result, anyhow};
 use boringtun::{noise::Tunn, x25519::StaticSecret};
-use ipnet::IpNet;
 use std::{
     collections::HashMap,
     net::{IpAddr, SocketAddr},
@@ -11,8 +10,7 @@ use crate::model::{PeerInfo, PublicKey};
 
 pub(super) struct Peer {
     pub(super) index: u32,
-    allowed_ips: RwLock<Vec<IpNet>>,
-    endpoint: RwLock<SocketAddr>,
+    info: RwLock<PeerInfo>,
     pub(super) tunnel: Mutex<Tunn>,
 }
 
@@ -23,8 +21,7 @@ pub(super) struct PeerTable {
 
 impl Peer {
     fn from_info(index: u32, private_key: &StaticSecret, info: PeerInfo) -> Result<Self> {
-        let endpoint = *info
-            .endpoints
+        info.endpoints
             .first()
             .context("Coordinator peer has no endpoint")?;
         let tunnel = Tunn::new(
@@ -38,51 +35,64 @@ impl Peer {
 
         Ok(Self {
             index,
-            allowed_ips: RwLock::new(info.virtual_addresses),
-            endpoint: RwLock::new(endpoint),
+            info: RwLock::new(info),
             tunnel: Mutex::new(tunnel),
         })
     }
 
     pub(super) fn endpoint(&self) -> Result<SocketAddr> {
-        Ok(*self
-            .endpoint
+        self.info
             .read()
-            .map_err(|_| anyhow!("WireGuard peer endpoint lock error"))?)
+            .map_err(|_| anyhow!("WireGuard peer info lock error"))?
+            .endpoints
+            .first()
+            .copied()
+            .context("Coordinator peer has no endpoint")
     }
 
     pub(super) fn update_endpoint(&self, endpoint: SocketAddr) -> Result<()> {
-        *self
-            .endpoint
+        let mut info = self
+            .info
             .write()
-            .map_err(|_| anyhow!("WireGuard peer endpoint lock error"))? = endpoint;
+            .map_err(|_| anyhow!("WireGuard peer info lock error"))?;
+
+        match info.endpoints.first_mut() {
+            Some(current) => *current = endpoint,
+            None => info.endpoints.push(endpoint),
+        }
+
         Ok(())
     }
 
     pub(super) fn allows_ip(&self, address: IpAddr) -> Result<bool> {
-        let allowed_ips = self
-            .allowed_ips
+        let info = self
+            .info
             .read()
-            .map_err(|_| anyhow!("WireGuard peer allowed IPs lock error"))?;
+            .map_err(|_| anyhow!("WireGuard peer info lock error"))?;
 
-        Ok(allowed_ips.iter().any(|net| net.contains(&address)))
+        Ok(info
+            .virtual_addresses
+            .iter()
+            .any(|net| net.contains(&address)))
+    }
+
+    pub(super) fn info(&self) -> Result<PeerInfo> {
+        Ok(self
+            .info
+            .read()
+            .map_err(|_| anyhow!("WireGuard peer info lock error"))?
+            .clone())
     }
 
     fn update(&self, info: PeerInfo) -> Result<()> {
-        let endpoint = *info
-            .endpoints
+        info.endpoints
             .first()
             .context("Coordinator peer has no endpoint")?;
 
         *self
-            .allowed_ips
+            .info
             .write()
-            .map_err(|_| anyhow!("WireGuard peer allowed IPs lock error"))? =
-            info.virtual_addresses;
-        *self
-            .endpoint
-            .write()
-            .map_err(|_| anyhow!("WireGuard peer endpoint lock error"))? = endpoint;
+            .map_err(|_| anyhow!("WireGuard peer info lock error"))? = info;
 
         Ok(())
     }
@@ -138,6 +148,13 @@ impl PeerTable {
         Ok(self.read()?.values().cloned().collect())
     }
 
+    pub(super) fn all_infos(&self) -> Result<Vec<PeerInfo>> {
+        self.read()?
+            .values()
+            .map(|peer| peer.info())
+            .collect::<Result<Vec<_>>>()
+    }
+
     pub(super) fn replace(&self, peer_infos: Vec<PeerInfo>) -> Result<()> {
         let mut peers = self
             .peers
@@ -147,6 +164,7 @@ impl PeerTable {
 
         for info in peer_infos {
             let public_key = info.public_key;
+
             let peer = if let Some(peer) = peers.get(&public_key) {
                 peer.update(info)?;
                 peer.clone()
@@ -259,6 +277,38 @@ mod tests {
         assert!(table.find_by_endpoint(endpoint(1001))?.is_none());
         assert!(table.find_by_endpoint(endpoint(1002))?.is_some());
         assert!(table.find_by_index(1)?.is_some());
+
+        Ok(())
+    }
+
+    #[test]
+    fn all_infos_returns_current_peer_infos() -> Result<()> {
+        let table = PeerTable::new(private_key());
+        table.upsert(peer_info(public_key(1), "100.64.0.1/32", endpoint(1001)))?;
+        table.upsert(peer_info(public_key(2), "100.64.0.2/32", endpoint(1002)))?;
+
+        let infos = table.all_infos()?;
+
+        assert_eq!(infos.len(), 2);
+        assert!(infos.iter().any(|info| info.public_key == public_key(1)));
+        assert!(infos.iter().any(|info| info.public_key == public_key(2)));
+
+        Ok(())
+    }
+
+    #[test]
+    fn endpoint_update_is_reflected_in_peer_info() -> Result<()> {
+        let table = PeerTable::new(private_key());
+        table.upsert(peer_info(public_key(1), "100.64.0.1/32", endpoint(1001)))?;
+        let peer = table
+            .find_by_endpoint(endpoint(1001))?
+            .expect("peer exists");
+
+        peer.update_endpoint(endpoint(2001))?;
+
+        let info = peer.info()?;
+        assert_eq!(info.endpoints[0], endpoint(2001));
+        assert_eq!(table.all_infos()?[0].endpoints[0], endpoint(2001));
 
         Ok(())
     }
