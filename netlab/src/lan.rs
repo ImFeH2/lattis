@@ -85,7 +85,11 @@ impl Lan {
             })
             .await?;
 
-        Ok(Interface::new(host_name, host))
+        let interface = Interface::new(host_name, host);
+
+        interface.up().await?;
+
+        Ok(interface)
     }
 
     pub async fn connect_named(&self, host: &Host, name: &str) -> Result<Interface> {

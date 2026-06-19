@@ -42,10 +42,13 @@ impl DirectLink {
             .execute()
             .await?;
 
-        Ok((
-            Interface::new(name1, host1.clone()),
-            Interface::new(name2, host2.clone()),
-        ))
+        let iface1 = Interface::new(name1, host1.clone());
+        let iface2 = Interface::new(name2, host2.clone());
+
+        iface1.up().await?;
+        iface2.up().await?;
+
+        Ok((iface1, iface2))
     }
 
     pub async fn connect_named(
