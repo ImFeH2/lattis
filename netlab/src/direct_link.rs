@@ -47,18 +47,4 @@ impl DirectLink {
 
         Ok((iface1, iface2))
     }
-
-    pub async fn connect_named(
-        host1: &Host,
-        name1: &str,
-        host2: &Host,
-        name2: &str,
-    ) -> Result<(Interface, Interface)> {
-        let (mut iface1, mut iface2) = Self::connect(host1, host2).await?;
-
-        iface1.rename(name1).await?;
-        iface2.rename(name2).await?;
-
-        Ok((iface1, iface2))
-    }
 }

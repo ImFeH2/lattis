@@ -90,14 +90,6 @@ impl Lan {
         Ok(interface)
     }
 
-    pub async fn connect_named(&self, host: &Host, name: &str) -> Result<Interface> {
-        let mut interface = self.connect(host).await?;
-
-        interface.rename(name).await?;
-
-        Ok(interface)
-    }
-
     pub fn name(&self) -> &str {
         &self.node.label
     }
