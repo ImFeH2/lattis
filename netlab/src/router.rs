@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use sysctl::Sysctl;
 
-use crate::{executor::RuntimeConfig, interface::Interface, lan::Lan, node::Node};
+use crate::{executor::RuntimeConfig, lan::Lan, node::Node};
 
 #[derive(Debug, Clone)]
 pub struct Router {
@@ -25,17 +25,17 @@ impl Router {
         &self.node.label
     }
 
-    pub async fn serve(&self, lan: &Lan) -> Result<Interface> {
+    pub async fn serve(&self, lan: &Lan) -> Result<()> {
         self.enable_ipv4_forwarding().await?;
         lan.ensure_gateway_available()?;
 
-        let (interface, _port) = lan.attach_node(self.node.clone()).await?;
+        let interface = lan.attach_node(self.node.clone()).await?;
         let address = lan.allocate_address()?;
 
         lan.set_gateway(address.addr())?;
         interface.add_address(address.into()).await?;
 
-        Ok(interface)
+        Ok(())
     }
 
     async fn enable_ipv4_forwarding(&self) -> Result<()> {

@@ -7,8 +7,8 @@ use rtnetlink::{LinkUnspec, RouteMessageBuilder};
 use crate::{netlink::link_index, node::Node};
 
 #[derive(Debug)]
-pub struct Interface {
-    pub(crate) name: String,
+pub(crate) struct Interface {
+    name: String,
     node: Arc<Node>,
 }
 
@@ -21,7 +21,7 @@ impl Interface {
         Ok(interface)
     }
 
-    pub async fn index(&self) -> Result<u32> {
+    pub(crate) async fn index(&self) -> Result<u32> {
         let name = self.name.clone();
 
         self.node
@@ -29,7 +29,7 @@ impl Interface {
             .await
     }
 
-    pub async fn up(&self) -> Result<()> {
+    async fn up(&self) -> Result<()> {
         let index = self.index().await?;
 
         self.node
@@ -44,22 +44,7 @@ impl Interface {
             .await
     }
 
-    pub async fn down(&self) -> Result<()> {
-        let index = self.index().await?;
-
-        self.node
-            .run_netlink(move |handle| async move {
-                handle
-                    .link()
-                    .set(LinkUnspec::new_with_index(index).down().build())
-                    .execute()
-                    .await?;
-                Ok(())
-            })
-            .await
-    }
-
-    pub async fn add_address(&self, address: IpNet) -> Result<()> {
+    pub(crate) async fn add_address(&self, address: IpNet) -> Result<()> {
         let index = self.index().await?;
         let ip = address.addr();
         let prefix_len = address.prefix_len();
@@ -76,7 +61,7 @@ impl Interface {
             .await
     }
 
-    pub async fn add_default_route(&self, gateway: Ipv4Addr) -> Result<()> {
+    pub(crate) async fn add_default_route(&self, gateway: Ipv4Addr) -> Result<()> {
         let index = self.index().await?;
 
         self.node
@@ -91,26 +76,5 @@ impl Interface {
                 Ok(())
             })
             .await
-    }
-
-    pub async fn rename(&mut self, new_name: &str) -> Result<()> {
-        let index = self.index().await?;
-        let new_name = new_name.to_string();
-        let link_name = new_name.clone();
-
-        self.node
-            .run_netlink(move |handle| async move {
-                handle
-                    .link()
-                    .set(LinkUnspec::new_with_index(index).name(link_name).build())
-                    .execute()
-                    .await?;
-
-                Ok(())
-            })
-            .await?;
-
-        self.name = new_name;
-        Ok(())
     }
 }

@@ -75,8 +75,8 @@ impl Lan {
         })
     }
 
-    pub async fn attach(&self, host: &Host) -> Result<(Interface, Ipv4Net)> {
-        let (interface, _port) = self.attach_node(host.node()).await?;
+    pub async fn attach(&self, host: &Host) -> Result<Ipv4Net> {
+        let interface = self.attach_node(host.node()).await?;
         let address = self.allocate_address()?;
 
         interface.add_address(address.into()).await?;
@@ -85,7 +85,7 @@ impl Lan {
             interface.add_default_route(gateway).await?;
         }
 
-        Ok((interface, address))
+        Ok(address)
     }
 
     pub fn name(&self) -> &str {
@@ -96,12 +96,12 @@ impl Lan {
         self.network
     }
 
-    pub(crate) async fn attach_node(&self, node: Arc<Node>) -> Result<(Interface, Interface)> {
+    pub(crate) async fn attach_node(&self, node: Arc<Node>) -> Result<Interface> {
         let (lan_port, node_interface) = create_veth_pair(self.node.clone(), node).await?;
 
         self.attach_port(&lan_port).await?;
 
-        Ok((node_interface, lan_port))
+        Ok(node_interface)
     }
 
     pub(crate) fn ensure_gateway_available(&self) -> Result<()> {

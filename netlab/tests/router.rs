@@ -14,8 +14,8 @@ async fn router_forwards_between_served_lans() -> Result<()> {
     router.serve(&lan1).await?;
     router.serve(&lan2).await?;
 
-    let (_iface1, _host1_addr) = lan1.attach(&host1).await?;
-    let (_iface2, host2_addr) = lan2.attach(&host2).await?;
+    lan1.attach(&host1).await?;
+    let host2_addr = lan2.attach(&host2).await?;
 
     host1.assert_can_reach(&host2, host2_addr.addr()).await?;
 

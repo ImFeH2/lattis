@@ -10,6 +10,5 @@ mod router;
 
 pub use crate::executor::{HostTask, RuntimeConfig};
 pub use crate::host::Host;
-pub use crate::interface::Interface;
 pub use crate::lan::Lan;
 pub use crate::router::Router;
