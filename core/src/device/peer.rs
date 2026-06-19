@@ -64,7 +64,7 @@ impl Peer {
         Ok(())
     }
 
-    pub(super) fn allows_ip(&self, address: IpAddr) -> Result<bool> {
+    pub(super) fn has_address(&self, address: IpAddr) -> Result<bool> {
         let info = self
             .info
             .read()
@@ -113,7 +113,7 @@ impl PeerTable {
         let peers = self.read()?;
 
         for peer in peers.values() {
-            if peer.allows_ip(dst)? {
+            if peer.has_address(dst)? {
                 return Ok(Some(peer.clone()));
             }
         }

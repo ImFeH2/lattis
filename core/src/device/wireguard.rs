@@ -116,7 +116,7 @@ async fn handle_tunn_result(
         }
         TunnResult::WriteToTunnelV4(packet, source) => {
             let source = IpAddr::V4(source);
-            if peer.allows_ip(source)? {
+            if peer.has_address(source)? {
                 packet_device.send(packet).await?;
             } else {
                 eprintln!(
@@ -127,7 +127,7 @@ async fn handle_tunn_result(
         }
         TunnResult::WriteToTunnelV6(packet, source) => {
             let source = IpAddr::V6(source);
-            if peer.allows_ip(source)? {
+            if peer.has_address(source)? {
                 packet_device.send(packet).await?;
             } else {
                 eprintln!(
