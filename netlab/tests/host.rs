@@ -2,21 +2,21 @@
 
 use anyhow::Result;
 use netlab::{
-    DirectLink, Host,
+    Host,
     testing::{run_udp_echo_client, run_udp_echo_server},
 };
 use std::net::SocketAddr;
 use tokio::sync::oneshot;
 
 #[tokio::test]
-async fn direct_link_connects_host_addresses() -> Result<()> {
+async fn host_connects_to_peer_addresses() -> Result<()> {
     let host1 = Host::new("host1").await?;
     let host2 = Host::new("host2").await?;
 
     let host1_ip = "10.10.0.1";
     let host2_ip = "10.10.0.2";
 
-    let (iface1, iface2) = DirectLink::connect(&host1, &host2).await?;
+    let (iface1, iface2) = host1.connect(&host2).await?;
 
     iface1.add_address("10.10.0.1/24".parse()?).await?;
     iface2.add_address("10.10.0.2/24".parse()?).await?;
@@ -38,11 +38,11 @@ async fn direct_link_connects_host_addresses() -> Result<()> {
 }
 
 #[tokio::test]
-async fn direct_link_interface_can_be_modified_while_up() -> Result<()> {
+async fn connected_interface_can_be_modified_while_up() -> Result<()> {
     let host1 = Host::new("host1").await?;
     let host2 = Host::new("host2").await?;
 
-    let (mut iface1, iface2) = DirectLink::connect(&host1, &host2).await?;
+    let (mut iface1, iface2) = host1.connect(&host2).await?;
 
     iface1.add_address("10.11.0.1/24".parse()?).await?;
     iface1.rename("uplink0").await?;
