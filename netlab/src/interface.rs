@@ -6,7 +6,7 @@ use rtnetlink::{LinkUnspec, RouteMessageBuilder};
 
 use crate::{netlink::link_index, node::Node};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Interface {
     name: String,
     node: Arc<Node>,
@@ -61,7 +61,7 @@ impl Interface {
             .await
     }
 
-    pub(crate) async fn add_default_route(&self, gateway: Ipv4Addr) -> Result<()> {
+    pub(crate) async fn set_default_route(&self, gateway: Ipv4Addr) -> Result<()> {
         let index = self.index().await?;
 
         self.node

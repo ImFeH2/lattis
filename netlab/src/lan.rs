@@ -30,6 +30,7 @@ pub struct Lan {
 #[derive(Debug)]
 struct LanState {
     gateway: Option<Ipv4Addr>,
+    host_interfaces: Vec<Interface>,
     next_host: usize,
 }
 
@@ -70,6 +71,7 @@ impl Lan {
             node,
             state: Mutex::new(LanState {
                 gateway: None,
+                host_interfaces: Vec::new(),
                 next_host: 0,
             }),
         })
@@ -81,8 +83,8 @@ impl Lan {
 
         interface.add_address(address.into()).await?;
 
-        if let Some(gateway) = self.gateway()? {
-            interface.add_default_route(gateway).await?;
+        if let Some(gateway) = self.remember_host_interface(&interface)? {
+            interface.set_default_route(gateway).await?;
         }
 
         Ok(address)
@@ -131,15 +133,22 @@ impl Lan {
         Ok(Ipv4Net::new(address, self.network.prefix_len())?)
     }
 
-    pub(crate) fn set_gateway(&self, gateway: Ipv4Addr) -> Result<()> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("lan state lock poisoned"))?;
+    pub(crate) async fn set_gateway(&self, gateway: Ipv4Addr) -> Result<()> {
+        let host_interfaces = {
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| anyhow::anyhow!("lan state lock poisoned"))?;
 
-        ensure!(state.gateway.is_none(), "lan already has a gateway");
+            ensure!(state.gateway.is_none(), "lan already has a gateway");
 
-        state.gateway = Some(gateway);
+            state.gateway = Some(gateway);
+            state.host_interfaces.clone()
+        };
+
+        for interface in host_interfaces {
+            interface.set_default_route(gateway).await?;
+        }
 
         Ok(())
     }
@@ -179,11 +188,13 @@ impl Lan {
             .await
     }
 
-    fn gateway(&self) -> Result<Option<Ipv4Addr>> {
-        let state = self
+    fn remember_host_interface(&self, interface: &Interface) -> Result<Option<Ipv4Addr>> {
+        let mut state = self
             .state
             .lock()
             .map_err(|_| anyhow::anyhow!("lan state lock poisoned"))?;
+
+        state.host_interfaces.push(interface.clone());
 
         Ok(state.gateway)
     }

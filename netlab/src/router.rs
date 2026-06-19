@@ -32,8 +32,8 @@ impl Router {
         let interface = lan.attach_node(self.node.clone()).await?;
         let address = lan.allocate_address()?;
 
-        lan.set_gateway(address.addr())?;
         interface.add_address(address.into()).await?;
+        lan.set_gateway(address.addr()).await?;
 
         Ok(())
     }
