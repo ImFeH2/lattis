@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use netlab::{
-    Host, Lan,
+    Connectable, Host, Lan,
     testing::{run_udp_echo_client, run_udp_echo_server},
 };
 use std::net::SocketAddr;
@@ -15,9 +15,9 @@ async fn lan_connects_multiple_host_addresses() -> Result<()> {
     let host2 = Host::new("host2").await?;
     let host3 = Host::new("host3").await?;
 
-    let iface1 = lan.connect(&host1).await?;
-    let iface2 = lan.connect(&host2).await?;
-    let iface3 = lan.connect(&host3).await?;
+    let (iface1, _port1) = host1.connect(&lan).await?;
+    let (iface2, _port2) = host2.connect(&lan).await?;
+    let (_port3, iface3) = lan.connect(&host3).await?;
 
     iface1.add_address("10.20.0.1/24".parse()?).await?;
     iface2.add_address("10.20.0.2/24".parse()?).await?;

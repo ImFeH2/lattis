@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use netlab::{
-    Host,
+    Connectable, Host,
     testing::{run_udp_echo_client, run_udp_echo_server},
 };
 use std::net::SocketAddr;

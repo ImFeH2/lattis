@@ -8,7 +8,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub(crate) struct Node {
+pub struct Node {
     pub(crate) label: String,
     pub(crate) executor: NamespaceExecutor,
     pub(crate) namespace: NetworkNamespace,

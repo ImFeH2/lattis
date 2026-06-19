@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use rtnetlink::{LinkBridge, LinkUnspec, LinkVeth};
+use async_trait::async_trait;
+use rtnetlink::{LinkBridge, LinkUnspec};
 
 use crate::{
+    connect::ConnectableInternals,
     executor::RuntimeConfig,
-    host::Host,
     interface::Interface,
-    netlink::{allocate_lan_name, allocate_veth_names, link_index},
+    netlink::{allocate_lan_name, link_index},
     node::Node,
 };
 
@@ -45,21 +46,23 @@ impl Lan {
         Ok(Self { index, node })
     }
 
-    pub async fn connect(&self, host: &Host) -> Result<Interface> {
+    pub fn name(&self) -> &str {
+        &self.node.label
+    }
+}
+
+#[async_trait]
+impl ConnectableInternals for Lan {
+    fn node(&self) -> Arc<Node> {
+        self.node.clone()
+    }
+
+    async fn on_connected(&self, interface: &Interface) -> Result<()> {
         let bridge_index = self.index;
-        let host = host.clone();
-        let host_namespace = host.node.namespace.raw_fd();
+        let port_index = interface.index().await?;
 
-        let host_name = self
-            .node
+        self.node
             .run_netlink(move |handle| async move {
-                let (host_name, bridge_name) = allocate_veth_names(&handle).await?;
-                let veth = LinkVeth::new(&host_name, &bridge_name).build();
-                handle.link().add(veth).execute().await?;
-
-                let host_index = link_index(&handle, &host_name).await?;
-                let port_index = link_index(&handle, &bridge_name).await?;
-
                 handle
                     .link()
                     .set(
@@ -71,26 +74,8 @@ impl Lan {
                     .execute()
                     .await?;
 
-                handle
-                    .link()
-                    .set(
-                        LinkUnspec::new_with_index(host_index)
-                            .setns_by_fd(host_namespace)
-                            .build(),
-                    )
-                    .execute()
-                    .await?;
-
-                Ok(host_name)
+                Ok(())
             })
-            .await?;
-
-        let interface = Interface::new(host_name, host).await?;
-
-        Ok(interface)
-    }
-
-    pub fn name(&self) -> &str {
-        &self.node.label
+            .await
     }
 }

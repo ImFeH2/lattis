@@ -2,17 +2,19 @@ use anyhow::Result;
 use ipnet::IpNet;
 use rtnetlink::LinkUnspec;
 
-use crate::{host::Host, netlink::link_index};
+use std::sync::Arc;
+
+use crate::{netlink::link_index, node::Node};
 
 #[derive(Debug)]
 pub struct Interface {
     pub(crate) name: String,
-    pub(crate) host: Host,
+    node: Arc<Node>,
 }
 
 impl Interface {
-    pub(crate) async fn new(name: String, host: Host) -> Result<Self> {
-        let interface = Self { name, host };
+    pub(crate) async fn new(name: String, node: Arc<Node>) -> Result<Self> {
+        let interface = Self { name, node };
 
         interface.up().await?;
 
@@ -22,8 +24,7 @@ impl Interface {
     pub async fn index(&self) -> Result<u32> {
         let name = self.name.clone();
 
-        self.host
-            .node
+        self.node
             .run_netlink(move |handle| async move { link_index(&handle, &name).await })
             .await
     }
@@ -31,8 +32,7 @@ impl Interface {
     pub async fn up(&self) -> Result<()> {
         let index = self.index().await?;
 
-        self.host
-            .node
+        self.node
             .run_netlink(move |handle| async move {
                 handle
                     .link()
@@ -47,8 +47,7 @@ impl Interface {
     pub async fn down(&self) -> Result<()> {
         let index = self.index().await?;
 
-        self.host
-            .node
+        self.node
             .run_netlink(move |handle| async move {
                 handle
                     .link()
@@ -65,8 +64,7 @@ impl Interface {
         let ip = address.addr();
         let prefix_len = address.prefix_len();
 
-        self.host
-            .node
+        self.node
             .run_netlink(move |handle| async move {
                 handle
                     .address()
@@ -83,8 +81,7 @@ impl Interface {
         let new_name = new_name.to_string();
         let link_name = new_name.clone();
 
-        self.host
-            .node
+        self.node
             .run_netlink(move |handle| async move {
                 handle
                     .link()

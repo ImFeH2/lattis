@@ -13,6 +13,7 @@ netlab-tests = []
 
 [dependencies]
 anyhow = "1"
+async-trait = "0.1"
 futures-util = "0.3"
 ipnet = "2"
 nix = { version = "0.30", default-features = false, features = [
