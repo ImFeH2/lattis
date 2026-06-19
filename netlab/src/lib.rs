@@ -11,12 +11,13 @@ use anyhow::{Context, Result};
 use futures_util::stream::TryStreamExt;
 use ipnet::IpNet;
 use netns::NetworkNamespace;
-use rtnetlink::{LinkUnspec, LinkVeth, packet_route::link::LinkAttribute};
+use rtnetlink::{LinkBridge, LinkUnspec, LinkVeth, packet_route::link::LinkAttribute};
 
 use crate::executor::NamespaceExecutor;
 pub use crate::executor::{HostTask, RuntimeConfig};
 
 static VETH_ID: AtomicU64 = AtomicU64::new(0);
+static LAN_ID: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug)]
 struct Node {
@@ -31,6 +32,12 @@ pub struct Host {
 }
 
 pub struct DirectLink;
+
+#[derive(Debug)]
+pub struct Lan {
+    index: u32,
+    node: Arc<Node>,
+}
 
 #[derive(Debug)]
 pub struct Interface {
@@ -189,6 +196,101 @@ impl DirectLink {
     }
 }
 
+impl Lan {
+    pub async fn new(name: &str) -> Result<Self> {
+        let namespace = NetworkNamespace::new(name).await?;
+        let executor = NamespaceExecutor::new(&namespace, RuntimeConfig::CurrentThread).await?;
+        let node = Arc::new(Node {
+            label: name.to_string(),
+            executor,
+            namespace,
+        });
+
+        let label = name.to_string();
+        let index = node
+            .run_netlink(move |handle| async move {
+                let bridge = allocate_lan_name(&label, &handle).await?;
+                handle
+                    .link()
+                    .add(
+                        LinkBridge::new(&bridge)
+                            .nf_call_iptables(false)
+                            .nf_call_ip6tables(false)
+                            .nf_call_arptables(false)
+                            .up()
+                            .build(),
+                    )
+                    .execute()
+                    .await?;
+
+                let index = link_index(&handle, &bridge).await?;
+
+                Ok(index)
+            })
+            .await?;
+
+        Ok(Self { index, node })
+    }
+
+    pub async fn connect(&self, host: &Host) -> Result<Interface> {
+        let bridge_index = self.index;
+        let host = host.clone();
+        let host_namespace = host.node.namespace.raw_fd();
+
+        let host_name = self
+            .node
+            .run_netlink(move |handle| async move {
+                let (host_name, bridge_name) = allocate_veth_names(&handle).await?;
+                let veth = LinkVeth::new(&host_name, &bridge_name).build();
+                handle.link().add(veth).execute().await?;
+
+                let host_index = link_index(&handle, &host_name).await?;
+                let port_index = link_index(&handle, &bridge_name).await?;
+
+                handle
+                    .link()
+                    .set(
+                        LinkUnspec::new_with_index(port_index)
+                            .controller(bridge_index)
+                            .up()
+                            .build(),
+                    )
+                    .execute()
+                    .await?;
+
+                handle
+                    .link()
+                    .set(
+                        LinkUnspec::new_with_index(host_index)
+                            .setns_by_fd(host_namespace)
+                            .build(),
+                    )
+                    .execute()
+                    .await?;
+
+                Ok(host_name)
+            })
+            .await?;
+
+        Ok(Interface {
+            name: host_name,
+            host,
+        })
+    }
+
+    pub async fn connect_named(&self, host: &Host, name: &str) -> Result<Interface> {
+        let mut interface = self.connect(host).await?;
+
+        interface.rename(name).await?;
+
+        Ok(interface)
+    }
+
+    pub fn name(&self) -> &str {
+        &self.node.label
+    }
+}
+
 impl Interface {
     pub fn configure(&self) -> InterfaceConfig<'_> {
         InterfaceConfig {
@@ -333,6 +435,41 @@ async fn link_exists(handle: &rtnetlink::Handle, name: &str) -> Result<bool> {
     }
 
     Ok(false)
+}
+
+async fn link_index(handle: &rtnetlink::Handle, name: &str) -> Result<u32> {
+    let link = handle
+        .link()
+        .get()
+        .match_name(name.to_string())
+        .execute()
+        .try_next()
+        .await?
+        .context(format!("failed to find link: {}", name))?;
+
+    Ok(link.header.index)
+}
+
+async fn allocate_lan_name(label: &str, handle: &rtnetlink::Handle) -> Result<String> {
+    let label: String = label
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .take(5)
+        .collect();
+    let label = if label.is_empty() {
+        "lan".to_string()
+    } else {
+        label
+    };
+
+    loop {
+        let id = LAN_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let name = format!("br-{}-{}", label, id);
+
+        if !link_exists(handle, &name).await? {
+            return Ok(name);
+        }
+    }
 }
 
 async fn allocate_veth_names(handle: &rtnetlink::Handle) -> Result<(String, String)> {

@@ -34,3 +34,8 @@ tokio = { version = "1", features = [
 name = "direct_link"
 path = "tests/direct_link.rs"
 required-features = ["netlab-tests"]
+
+[[test]]
+name = "lan"
+path = "tests/lan.rs"
+required-features = ["netlab-tests"]
