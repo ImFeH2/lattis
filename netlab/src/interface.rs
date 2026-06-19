@@ -11,8 +11,12 @@ pub struct Interface {
 }
 
 impl Interface {
-    pub(crate) fn new(name: String, host: Host) -> Self {
-        Self { name, host }
+    pub(crate) async fn new(name: String, host: Host) -> Result<Self> {
+        let interface = Self { name, host };
+
+        interface.up().await?;
+
+        Ok(interface)
     }
 
     pub async fn index(&self) -> Result<u32> {

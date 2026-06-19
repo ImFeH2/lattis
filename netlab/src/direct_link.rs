@@ -42,11 +42,8 @@ impl DirectLink {
             .execute()
             .await?;
 
-        let iface1 = Interface::new(name1, host1.clone());
-        let iface2 = Interface::new(name2, host2.clone());
-
-        iface1.up().await?;
-        iface2.up().await?;
+        let iface1 = Interface::new(name1, host1.clone()).await?;
+        let iface2 = Interface::new(name2, host2.clone()).await?;
 
         Ok((iface1, iface2))
     }

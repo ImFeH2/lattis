@@ -85,9 +85,7 @@ impl Lan {
             })
             .await?;
 
-        let interface = Interface::new(host_name, host);
-
-        interface.up().await?;
+        let interface = Interface::new(host_name, host).await?;
 
         Ok(interface)
     }
