@@ -8,7 +8,7 @@ use std::{
     net::{IpAddr, SocketAddr, SocketAddrV6},
 };
 
-use crate::model::{PeerInfo, RegisterDeviceRequest, RegisterDeviceResponse};
+use crate::model::{DeviceInfo, RegisterDeviceRequest, RegisterDeviceResponse};
 
 pub(super) struct CoordinatorClient {
     client: reqwest::Client,
@@ -16,8 +16,8 @@ pub(super) struct CoordinatorClient {
 }
 
 pub(super) enum PeerEvent {
-    Peer(PeerInfo),
-    Peers(Vec<PeerInfo>),
+    Peer(DeviceInfo),
+    Peers(Vec<DeviceInfo>),
 }
 
 pub(super) struct PeerEventStream {
@@ -191,11 +191,11 @@ mod tests {
         }
     }
 
-    fn peer() -> PeerInfo {
-        PeerInfo {
+    fn device_info() -> DeviceInfo {
+        DeviceInfo {
             device_id: DeviceID::random(),
             public_key: crate::model::PublicKey::from([1; 32]),
-            virtual_addresses: vec!["100.64.0.1/32".parse().unwrap()],
+            addresses: vec!["100.64.0.1/32".parse().unwrap()],
             endpoints: vec![SocketAddr::from(([192, 0, 2, 1], 1001))],
         }
     }
@@ -218,7 +218,7 @@ mod tests {
 
     #[test]
     fn parse_peer_event_returns_single_peer() -> Result<()> {
-        let peer = peer();
+        let peer = device_info();
         let data = serde_json::to_string(&peer)?;
         let event = parse_peer_event("peer", &data)?;
 
@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn parse_peer_event_returns_peer_list() -> Result<()> {
-        let peer = peer();
+        let peer = device_info();
         let data = serde_json::to_string(&vec![peer.clone()])?;
         let event = parse_peer_event("peers", &data)?;
 
@@ -348,7 +348,7 @@ mod tests {
 
     #[test]
     fn register_device_response_json_is_valid_peer_event_data() -> Result<()> {
-        let peer = peer();
+        let peer = device_info();
         let response = RegisterDeviceResponse {
             device: peer.clone(),
             peers: vec![peer.clone()],

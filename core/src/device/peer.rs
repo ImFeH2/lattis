@@ -6,11 +6,11 @@ use std::{
     sync::{Arc, Mutex, RwLock, RwLockReadGuard},
 };
 
-use crate::model::{PeerInfo, PublicKey};
+use crate::model::{DeviceInfo, PublicKey};
 
 pub(super) struct Peer {
     pub(super) index: u32,
-    info: RwLock<PeerInfo>,
+    info: RwLock<DeviceInfo>,
     pub(super) tunnel: Mutex<Tunn>,
 }
 
@@ -20,7 +20,7 @@ pub(super) struct PeerTable {
 }
 
 impl Peer {
-    fn from_info(index: u32, private_key: &StaticSecret, info: PeerInfo) -> Result<Self> {
+    fn from_info(index: u32, private_key: &StaticSecret, info: DeviceInfo) -> Result<Self> {
         info.endpoints
             .first()
             .context("Coordinator peer has no endpoint")?;
@@ -70,13 +70,10 @@ impl Peer {
             .read()
             .map_err(|_| anyhow!("WireGuard peer info lock error"))?;
 
-        Ok(info
-            .virtual_addresses
-            .iter()
-            .any(|net| net.contains(&address)))
+        Ok(info.addresses.iter().any(|net| net.contains(&address)))
     }
 
-    pub(super) fn info(&self) -> Result<PeerInfo> {
+    pub(super) fn info(&self) -> Result<DeviceInfo> {
         Ok(self
             .info
             .read()
@@ -84,7 +81,7 @@ impl Peer {
             .clone())
     }
 
-    fn update(&self, info: PeerInfo) -> Result<()> {
+    fn update(&self, info: DeviceInfo) -> Result<()> {
         info.endpoints
             .first()
             .context("Coordinator peer has no endpoint")?;
@@ -148,14 +145,14 @@ impl PeerTable {
         Ok(self.read()?.values().cloned().collect())
     }
 
-    pub(super) fn all_infos(&self) -> Result<Vec<PeerInfo>> {
+    pub(super) fn all_infos(&self) -> Result<Vec<DeviceInfo>> {
         self.read()?
             .values()
             .map(|peer| peer.info())
             .collect::<Result<Vec<_>>>()
     }
 
-    pub(super) fn replace(&self, peer_infos: Vec<PeerInfo>) -> Result<()> {
+    pub(super) fn replace(&self, peer_infos: Vec<DeviceInfo>) -> Result<()> {
         let mut peers = self
             .peers
             .write()
@@ -183,7 +180,7 @@ impl PeerTable {
         Ok(())
     }
 
-    pub(super) fn upsert(&self, info: PeerInfo) -> Result<()> {
+    pub(super) fn upsert(&self, info: DeviceInfo) -> Result<()> {
         let mut peers = self
             .peers
             .write()
@@ -221,11 +218,11 @@ mod tests {
         SocketAddr::from(([192, 0, 2, 1], port))
     }
 
-    fn peer_info(public_key: PublicKey, address: &str, endpoint: SocketAddr) -> PeerInfo {
-        PeerInfo {
+    fn device_info(public_key: PublicKey, address: &str, endpoint: SocketAddr) -> DeviceInfo {
+        DeviceInfo {
             device_id: DeviceID::random(),
             public_key,
-            virtual_addresses: vec![address.parse().unwrap()],
+            addresses: vec![address.parse().unwrap()],
             endpoints: vec![endpoint],
         }
     }
@@ -241,7 +238,7 @@ mod tests {
     #[test]
     fn upsert_adds_peer_and_finds_it_by_destination_endpoint_and_index() -> Result<()> {
         let table = PeerTable::new(private_key());
-        table.upsert(peer_info(public_key(1), "100.64.0.1/32", endpoint(1001)))?;
+        table.upsert(device_info(public_key(1), "100.64.0.1/32", endpoint(1001)))?;
 
         let by_destination = table.find_by_destination("100.64.0.1".parse()?)?;
         let by_endpoint = table.find_by_endpoint(endpoint(1001))?;
@@ -258,7 +255,7 @@ mod tests {
     #[test]
     fn find_by_destination_returns_none_for_unmatched_address() -> Result<()> {
         let table = PeerTable::new(private_key());
-        table.upsert(peer_info(public_key(1), "100.64.0.1/32", endpoint(1001)))?;
+        table.upsert(device_info(public_key(1), "100.64.0.1/32", endpoint(1001)))?;
 
         assert!(table.find_by_destination("100.64.0.2".parse()?)?.is_none());
 
@@ -268,8 +265,8 @@ mod tests {
     #[test]
     fn upsert_updates_existing_peer_in_place() -> Result<()> {
         let table = PeerTable::new(private_key());
-        table.upsert(peer_info(public_key(1), "100.64.0.1/32", endpoint(1001)))?;
-        table.upsert(peer_info(public_key(1), "100.64.0.2/32", endpoint(1002)))?;
+        table.upsert(device_info(public_key(1), "100.64.0.1/32", endpoint(1001)))?;
+        table.upsert(device_info(public_key(1), "100.64.0.2/32", endpoint(1002)))?;
 
         assert_eq!(table.all()?.len(), 1);
         assert!(table.find_by_destination("100.64.0.1".parse()?)?.is_none());
@@ -284,8 +281,8 @@ mod tests {
     #[test]
     fn all_infos_returns_current_peer_infos() -> Result<()> {
         let table = PeerTable::new(private_key());
-        table.upsert(peer_info(public_key(1), "100.64.0.1/32", endpoint(1001)))?;
-        table.upsert(peer_info(public_key(2), "100.64.0.2/32", endpoint(1002)))?;
+        table.upsert(device_info(public_key(1), "100.64.0.1/32", endpoint(1001)))?;
+        table.upsert(device_info(public_key(2), "100.64.0.2/32", endpoint(1002)))?;
 
         let infos = table.all_infos()?;
 
@@ -297,9 +294,9 @@ mod tests {
     }
 
     #[test]
-    fn endpoint_update_is_reflected_in_peer_info() -> Result<()> {
+    fn endpoint_update_is_reflected_in_device_info() -> Result<()> {
         let table = PeerTable::new(private_key());
-        table.upsert(peer_info(public_key(1), "100.64.0.1/32", endpoint(1001)))?;
+        table.upsert(device_info(public_key(1), "100.64.0.1/32", endpoint(1001)))?;
         let peer = table
             .find_by_endpoint(endpoint(1001))?
             .expect("peer exists");
@@ -317,16 +314,16 @@ mod tests {
     fn replace_removes_missing_peers_and_keeps_updated_peers() -> Result<()> {
         let table = PeerTable::new(private_key());
         table.replace(vec![
-            peer_info(public_key(1), "100.64.0.1/32", endpoint(1001)),
-            peer_info(public_key(2), "100.64.0.2/32", endpoint(1002)),
+            device_info(public_key(1), "100.64.0.1/32", endpoint(1001)),
+            device_info(public_key(2), "100.64.0.2/32", endpoint(1002)),
         ])?;
 
         let first = table
             .find_by_endpoint(endpoint(1001))?
             .expect("peer exists");
         table.replace(vec![
-            peer_info(public_key(1), "100.64.0.10/32", endpoint(1010)),
-            peer_info(public_key(3), "100.64.0.3/32", endpoint(1003)),
+            device_info(public_key(1), "100.64.0.10/32", endpoint(1010)),
+            device_info(public_key(3), "100.64.0.3/32", endpoint(1003)),
         ])?;
 
         let updated_first = table
@@ -345,8 +342,8 @@ mod tests {
     fn replace_assigns_incrementing_indexes_to_new_peers() -> Result<()> {
         let table = PeerTable::new(private_key());
         table.replace(vec![
-            peer_info(public_key(1), "100.64.0.1/32", endpoint(1001)),
-            peer_info(public_key(2), "100.64.0.2/32", endpoint(1002)),
+            device_info(public_key(1), "100.64.0.1/32", endpoint(1001)),
+            device_info(public_key(2), "100.64.0.2/32", endpoint(1002)),
         ])?;
 
         assert!(table.find_by_index(1)?.is_some());
@@ -359,10 +356,10 @@ mod tests {
     #[test]
     fn upsert_rejects_peer_without_endpoint() {
         let table = PeerTable::new(private_key());
-        let result = table.upsert(PeerInfo {
+        let result = table.upsert(DeviceInfo {
             device_id: DeviceID::random(),
             public_key: public_key(1),
-            virtual_addresses: vec!["100.64.0.1/32".parse().unwrap()],
+            addresses: vec!["100.64.0.1/32".parse().unwrap()],
             endpoints: Vec::new(),
         });
 

@@ -11,7 +11,7 @@ use axum::{
 use std::{convert::Infallible, time::Duration};
 
 use super::registry::Coordinator;
-use crate::model::{DeviceID, PeerInfo, RegisterDeviceRequest, RegisterDeviceResponse};
+use crate::model::{DeviceID, DeviceInfo, RegisterDeviceRequest, RegisterDeviceResponse};
 
 struct CoordinatorApiError(anyhow::Error);
 
@@ -53,7 +53,7 @@ async fn register_device(
 async fn list_device_peers(
     State(coordinator): State<Coordinator>,
     Path(device_id): Path<DeviceID>,
-) -> std::result::Result<Json<Vec<PeerInfo>>, CoordinatorApiError> {
+) -> std::result::Result<Json<Vec<DeviceInfo>>, CoordinatorApiError> {
     let peers = coordinator.peers_for(&device_id).await?;
 
     Ok(Json(peers))
@@ -120,13 +120,13 @@ async fn stream_device_peer_events(
     ))
 }
 
-fn peers_event(peers: &[PeerInfo]) -> anyhow::Result<Event> {
+fn peers_event(peers: &[DeviceInfo]) -> anyhow::Result<Event> {
     Ok(Event::default()
         .event("peers")
         .data(serde_json::to_string(peers)?))
 }
 
-fn peer_event(peer: &PeerInfo) -> anyhow::Result<Event> {
+fn peer_event(peer: &DeviceInfo) -> anyhow::Result<Event> {
     Ok(Event::default()
         .event("peer")
         .data(serde_json::to_string(peer)?))

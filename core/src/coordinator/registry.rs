@@ -7,14 +7,14 @@ use tokio::sync::{RwLock, broadcast};
 
 use super::api;
 use crate::model::{
-    DeviceID, LATTIS_NETWORK_ADDRESS_COUNT, LATTIS_NETWORK_PREFIX, PeerInfo, PublicKey,
+    DeviceID, DeviceInfo, LATTIS_NETWORK_ADDRESS_COUNT, LATTIS_NETWORK_PREFIX, PublicKey,
     RegisterDeviceRequest, RegisterDeviceResponse,
 };
 
 #[derive(Clone)]
 pub struct Coordinator {
-    peers: Arc<RwLock<HashMap<DeviceID, PeerInfo>>>,
-    peer_events: broadcast::Sender<PeerInfo>,
+    peers: Arc<RwLock<HashMap<DeviceID, DeviceInfo>>>,
+    peer_events: broadcast::Sender<DeviceInfo>,
 }
 
 impl Coordinator {
@@ -33,11 +33,11 @@ impl Coordinator {
             let mut peers = self.peers.write().await;
             ensure_public_key_available(&peers, &request.device_id, &request.public_key)?;
 
-            let virtual_addresses = peer_virtual_addresses(&peers, &request.device_id)?;
-            let registered_peer = PeerInfo {
+            let addresses = peer_addresses(&peers, &request.device_id)?;
+            let registered_peer = DeviceInfo {
                 device_id: request.device_id,
                 public_key: request.public_key,
-                virtual_addresses,
+                addresses,
                 endpoints: request.endpoints,
             };
 
@@ -54,12 +54,12 @@ impl Coordinator {
         Ok(response)
     }
 
-    pub(crate) async fn peers_for(&self, device_id: &DeviceID) -> Result<Vec<PeerInfo>> {
+    pub(crate) async fn peers_for(&self, device_id: &DeviceID) -> Result<Vec<DeviceInfo>> {
         let peers = self.peers.read().await;
         collect_peers_for(&peers, device_id)
     }
 
-    pub(crate) fn subscribe_peer_events(&self) -> broadcast::Receiver<PeerInfo> {
+    pub(crate) fn subscribe_peer_events(&self) -> broadcast::Receiver<DeviceInfo> {
         self.peer_events.subscribe()
     }
 
@@ -72,7 +72,7 @@ impl Coordinator {
         Ok(())
     }
 
-    fn publish_peer_update(&self, peer: PeerInfo) {
+    fn publish_peer_update(&self, peer: DeviceInfo) {
         let _ = self.peer_events.send(peer);
     }
 }
@@ -89,9 +89,9 @@ impl Default for Coordinator {
 }
 
 fn collect_peers_for(
-    peers: &HashMap<DeviceID, PeerInfo>,
+    peers: &HashMap<DeviceID, DeviceInfo>,
     device_id: &DeviceID,
-) -> Result<Vec<PeerInfo>> {
+) -> Result<Vec<DeviceInfo>> {
     ensure!(
         peers.contains_key(device_id),
         "Coordinator device is not registered"
@@ -104,18 +104,18 @@ fn collect_peers_for(
         .collect())
 }
 
-fn peer_virtual_addresses(
-    peers: &HashMap<DeviceID, PeerInfo>,
+fn peer_addresses(
+    peers: &HashMap<DeviceID, DeviceInfo>,
     device_id: &DeviceID,
 ) -> Result<Vec<IpNet>> {
     if let Some(peer) = peers.get(device_id) {
-        return Ok(peer.virtual_addresses.clone());
+        return Ok(peer.addresses.clone());
     }
 
     Ok(vec![IpNet::V4(allocate_virtual_address(peers)?)])
 }
 
-fn allocate_virtual_address(peers: &HashMap<DeviceID, PeerInfo>) -> Result<Ipv4Net> {
+fn allocate_virtual_address(peers: &HashMap<DeviceID, DeviceInfo>) -> Result<Ipv4Net> {
     for _ in 0..LATTIS_NETWORK_ADDRESS_COUNT {
         let host = OsRng.next_u32() % LATTIS_NETWORK_ADDRESS_COUNT;
         let candidate = u32::from(LATTIS_NETWORK_PREFIX) | host;
@@ -129,16 +129,19 @@ fn allocate_virtual_address(peers: &HashMap<DeviceID, PeerInfo>) -> Result<Ipv4N
     bail!("Coordinator virtual address pool is exhausted")
 }
 
-fn uses_virtual_address(peers: &HashMap<DeviceID, PeerInfo>, address: std::net::Ipv4Addr) -> bool {
+fn uses_virtual_address(
+    peers: &HashMap<DeviceID, DeviceInfo>,
+    address: std::net::Ipv4Addr,
+) -> bool {
     peers.values().any(|peer| {
-        peer.virtual_addresses.iter().any(
+        peer.addresses.iter().any(
             |virtual_address| matches!(virtual_address, IpNet::V4(net) if net.addr() == address),
         )
     })
 }
 
 fn ensure_public_key_available(
-    peers: &HashMap<DeviceID, PeerInfo>,
+    peers: &HashMap<DeviceID, DeviceInfo>,
     device_id: &DeviceID,
     public_key: &PublicKey,
 ) -> Result<()> {
@@ -206,7 +209,7 @@ mod tests {
         assert_eq!(response.device.public_key, public_key(1));
         assert_eq!(response.device.endpoints, vec![endpoint(1001)]);
 
-        let address = response.device.virtual_addresses[0];
+        let address = response.device.addresses[0];
         let IpNet::V4(address) = address else {
             panic!("expected IPv4 virtual address");
         };
@@ -250,7 +253,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn register_reuses_virtual_addresses_for_existing_device() -> Result<()> {
+    async fn register_reuses_addresses_for_existing_device() -> Result<()> {
         let coordinator = Coordinator::new();
         let device_id = DeviceID::random();
         let first = coordinator
@@ -264,10 +267,7 @@ mod tests {
             .register(request(device_id, public_key(2), vec![endpoint(1002)]))
             .await?;
 
-        assert_eq!(
-            second.device.virtual_addresses,
-            first.device.virtual_addresses
-        );
+        assert_eq!(second.device.addresses, first.device.addresses);
         assert_eq!(second.device.public_key, public_key(2));
         assert_eq!(second.device.endpoints, vec![endpoint(1002)]);
 
@@ -356,10 +356,10 @@ mod tests {
         let device_id = DeviceID::random();
         let peers = HashMap::from([(
             device_id.clone(),
-            PeerInfo {
+            DeviceInfo {
                 device_id,
                 public_key: public_key(1),
-                virtual_addresses: vec![
+                addresses: vec![
                     "100.64.0.1/32".parse().unwrap(),
                     "fd00::1/128".parse().unwrap(),
                 ],

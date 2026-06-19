@@ -15,10 +15,10 @@ pub(crate) const LATTIS_NETWORK_ADDRESS_COUNT: u32 = 1 << LATTIS_NETWORK_HOST_BI
 pub struct DeviceID(Uuid);
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PeerInfo {
+pub struct DeviceInfo {
     pub device_id: DeviceID,
     pub public_key: PublicKey,
-    pub virtual_addresses: Vec<IpNet>,
+    pub addresses: Vec<IpNet>,
     pub endpoints: Vec<SocketAddr>,
 }
 
@@ -31,8 +31,8 @@ pub(crate) struct RegisterDeviceRequest {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct RegisterDeviceResponse {
-    pub(crate) device: PeerInfo,
-    pub(crate) peers: Vec<PeerInfo>,
+    pub(crate) device: DeviceInfo,
+    pub(crate) peers: Vec<DeviceInfo>,
 }
 
 impl fmt::Display for DeviceID {
@@ -51,11 +51,11 @@ impl DeviceID {
 mod tests {
     use super::*;
 
-    fn peer() -> PeerInfo {
-        PeerInfo {
+    fn device_info() -> DeviceInfo {
+        DeviceInfo {
             device_id: DeviceID::random(),
             public_key: PublicKey::from([1; 32]),
-            virtual_addresses: vec!["100.64.0.1/32".parse().unwrap()],
+            addresses: vec!["100.64.0.1/32".parse().unwrap()],
             endpoints: vec!["192.0.2.1:1001".parse().unwrap()],
         }
     }
@@ -90,21 +90,21 @@ mod tests {
     }
 
     #[test]
-    fn peer_info_json_round_trips() -> anyhow::Result<()> {
-        let peer = peer();
-        let json = serde_json::to_string(&peer)?;
+    fn device_info_json_round_trips() -> anyhow::Result<()> {
+        let device = device_info();
+        let json = serde_json::to_string(&device)?;
 
-        assert_eq!(serde_json::from_str::<PeerInfo>(&json)?, peer);
+        assert_eq!(serde_json::from_str::<DeviceInfo>(&json)?, device);
 
         Ok(())
     }
 
     #[test]
     fn register_device_response_json_round_trips() -> anyhow::Result<()> {
-        let device = peer();
+        let device = device_info();
         let response = RegisterDeviceResponse {
             device: device.clone(),
-            peers: vec![peer()],
+            peers: vec![device_info()],
         };
         let json = serde_json::to_string(&response)?;
 

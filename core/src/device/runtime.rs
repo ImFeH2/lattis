@@ -22,13 +22,13 @@ use super::{
         packet_receiver_index,
     },
 };
-use crate::model::{PeerInfo, RegisterDeviceRequest};
+use crate::model::{DeviceInfo, RegisterDeviceRequest};
 
 const WIREGUARD_TIMER_INTERVAL: Duration = Duration::from_millis(250);
 
 pub struct Device {
     _route: RouteGuard,
-    peer_info: PeerInfo,
+    info: DeviceInfo,
     peers: Arc<PeerTable>,
     peer_events: JoinHandle<Result<()>>,
     outbound: JoinHandle<Result<()>>,
@@ -61,13 +61,11 @@ impl Device {
             })
             .await?;
         let peer_events = coordinator.peer_events(&device_id.to_string())?;
-        let packet_device = open_tun_device(
-            &interface_name,
-            registration.device.virtual_addresses.clone(),
-        )?;
+        let packet_device =
+            open_tun_device(&interface_name, registration.device.addresses.clone())?;
         let route = add_lattis_network_route(&packet_device).await?;
 
-        let peer_info = registration.device;
+        let info = registration.device;
         let peers = Arc::new(PeerTable::new(private_key));
         peers.replace(registration.peers)?;
 
@@ -79,26 +77,26 @@ impl Device {
         )
         .await?;
 
-        Ok(Self::from_runtime(peer_info, peers, route, tasks))
+        Ok(Self::from_runtime(info, peers, route, tasks))
     }
 
-    pub fn peer_info(&self) -> PeerInfo {
-        self.peer_info.clone()
+    pub fn info(&self) -> DeviceInfo {
+        self.info.clone()
     }
 
-    pub fn peers(&self) -> Result<Vec<PeerInfo>> {
+    pub fn peers(&self) -> Result<Vec<DeviceInfo>> {
         self.peers.all_infos()
     }
 
     fn from_runtime(
-        peer_info: PeerInfo,
+        info: DeviceInfo,
         peers: Arc<PeerTable>,
         route: RouteGuard,
         tasks: DeviceTasks,
     ) -> Self {
         Self {
             _route: route,
-            peer_info,
+            info,
             peers,
             peer_events: tasks.peer_events,
             outbound: tasks.outbound,

@@ -70,9 +70,9 @@ async fn coordinator_registers_devices_and_lists_peers() -> Result<()> {
 }
 
 fn single_virtual_address(peer: &Value) -> Result<&str> {
-    let addresses = peer["virtual_addresses"]
+    let addresses = peer["addresses"]
         .as_array()
-        .ok_or_else(|| anyhow::anyhow!("virtual_addresses is not an array"))?;
+        .ok_or_else(|| anyhow::anyhow!("addresses is not an array"))?;
     ensure!(addresses.len() == 1, "expected one virtual address");
 
     addresses[0]
