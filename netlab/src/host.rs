@@ -23,23 +23,19 @@ pub struct Host {
     pub(crate) node: Arc<Node>,
 }
 
+#[derive(Debug, Clone)]
+pub struct HostBuilder {
+    name: String,
+    runtime: RuntimeConfig,
+}
+
 impl Host {
     pub async fn new() -> Result<Self> {
-        Self::with_runtime(RuntimeConfig::CurrentThread).await
+        Self::builder().build().await
     }
 
-    pub async fn named(name: &str) -> Result<Self> {
-        Self::named_with_runtime(name, RuntimeConfig::CurrentThread).await
-    }
-
-    pub async fn with_runtime(config: RuntimeConfig) -> Result<Self> {
-        Self::named_with_runtime("host", config).await
-    }
-
-    pub async fn named_with_runtime(name: &str, config: RuntimeConfig) -> Result<Self> {
-        Ok(Self {
-            node: Node::new(name, config).await?,
-        })
+    pub fn builder() -> HostBuilder {
+        HostBuilder::new()
     }
 
     pub fn name(&self) -> &str {
@@ -110,5 +106,30 @@ impl Host {
         F: FnOnce() -> Result<T> + Send + 'static,
     {
         self.node.executor.spawn_blocking(f)
+    }
+}
+
+impl HostBuilder {
+    fn new() -> Self {
+        Self {
+            name: "host".to_string(),
+            runtime: RuntimeConfig::CurrentThread,
+        }
+    }
+
+    pub async fn build(self) -> Result<Host> {
+        Ok(Host {
+            node: Node::new(&self.name, self.runtime).await?,
+        })
+    }
+
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
+
+    pub fn runtime(mut self, runtime: RuntimeConfig) -> Self {
+        self.runtime = runtime;
+        self
     }
 }

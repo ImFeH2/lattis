@@ -27,6 +27,13 @@ pub struct Lan {
     state: Mutex<LanState>,
 }
 
+#[derive(Debug, Clone)]
+pub struct LanBuilder {
+    name: String,
+    network: Ipv4Net,
+    runtime: RuntimeConfig,
+}
+
 #[derive(Debug)]
 struct LanState {
     gateway: Option<Ipv4Addr>,
@@ -36,45 +43,11 @@ struct LanState {
 
 impl Lan {
     pub async fn new(network: Ipv4Net) -> Result<Self> {
-        Self::named("lan", network).await
+        Self::builder(network).build().await
     }
 
-    pub async fn named(name: &str, network: Ipv4Net) -> Result<Self> {
-        let node = Node::new(name, RuntimeConfig::CurrentThread).await?;
-
-        let label = name.to_string();
-        let index = node
-            .run_netlink(move |handle| async move {
-                let bridge = allocate_lan_name(&label, &handle).await?;
-                handle
-                    .link()
-                    .add(
-                        LinkBridge::new(&bridge)
-                            .stp_state(BridgeStpState::Disabled)
-                            .forward_delay(0)
-                            .nf_call_iptables(false)
-                            .nf_call_ip6tables(false)
-                            .nf_call_arptables(false)
-                            .up()
-                            .build(),
-                    )
-                    .execute()
-                    .await?;
-
-                link_index(&handle, &bridge).await
-            })
-            .await?;
-
-        Ok(Self {
-            index,
-            network,
-            node,
-            state: Mutex::new(LanState {
-                gateway: None,
-                host_interfaces: Vec::new(),
-                next_host: 0,
-            }),
-        })
+    pub fn builder(network: Ipv4Net) -> LanBuilder {
+        LanBuilder::new(network)
     }
 
     pub async fn attach(&self, host: &Host) -> Result<Ipv4Net> {
@@ -197,5 +170,63 @@ impl Lan {
         state.host_interfaces.push(interface.clone());
 
         Ok(state.gateway)
+    }
+}
+
+impl LanBuilder {
+    fn new(network: Ipv4Net) -> Self {
+        Self {
+            name: "lan".to_string(),
+            network,
+            runtime: RuntimeConfig::CurrentThread,
+        }
+    }
+
+    pub async fn build(self) -> Result<Lan> {
+        let node = Node::new(&self.name, self.runtime).await?;
+
+        let label = self.name;
+        let index = node
+            .run_netlink(move |handle| async move {
+                let bridge = allocate_lan_name(&label, &handle).await?;
+                handle
+                    .link()
+                    .add(
+                        LinkBridge::new(&bridge)
+                            .stp_state(BridgeStpState::Disabled)
+                            .forward_delay(0)
+                            .nf_call_iptables(false)
+                            .nf_call_ip6tables(false)
+                            .nf_call_arptables(false)
+                            .up()
+                            .build(),
+                    )
+                    .execute()
+                    .await?;
+
+                link_index(&handle, &bridge).await
+            })
+            .await?;
+
+        Ok(Lan {
+            index,
+            network: self.network,
+            node,
+            state: Mutex::new(LanState {
+                gateway: None,
+                host_interfaces: Vec::new(),
+                next_host: 0,
+            }),
+        })
+    }
+
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
+
+    pub fn runtime(mut self, runtime: RuntimeConfig) -> Self {
+        self.runtime = runtime;
+        self
     }
 }

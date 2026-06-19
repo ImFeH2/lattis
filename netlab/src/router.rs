@@ -10,15 +10,19 @@ pub struct Router {
     node: Arc<Node>,
 }
 
+#[derive(Debug, Clone)]
+pub struct RouterBuilder {
+    name: String,
+    runtime: RuntimeConfig,
+}
+
 impl Router {
     pub async fn new() -> Result<Self> {
-        Self::named("router").await
+        Self::builder().build().await
     }
 
-    pub async fn named(name: &str) -> Result<Self> {
-        Ok(Self {
-            node: Node::new(name, RuntimeConfig::CurrentThread).await?,
-        })
+    pub fn builder() -> RouterBuilder {
+        RouterBuilder::new()
     }
 
     pub fn name(&self) -> &str {
@@ -49,5 +53,30 @@ impl Router {
                 Ok(())
             })
             .await
+    }
+}
+
+impl RouterBuilder {
+    fn new() -> Self {
+        Self {
+            name: "router".to_string(),
+            runtime: RuntimeConfig::CurrentThread,
+        }
+    }
+
+    pub async fn build(self) -> Result<Router> {
+        Ok(Router {
+            node: Node::new(&self.name, self.runtime).await?,
+        })
+    }
+
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
+
+    pub fn runtime(mut self, runtime: RuntimeConfig) -> Self {
+        self.runtime = runtime;
+        self
     }
 }
