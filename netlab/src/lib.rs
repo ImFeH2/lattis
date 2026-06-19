@@ -4,12 +4,12 @@ pub mod testing;
 
 use std::{
     future::Future,
-    net::IpAddr,
     sync::{Arc, atomic::AtomicU64},
 };
 
 use anyhow::{Context, Result};
 use futures_util::stream::TryStreamExt;
+use ipnet::IpNet;
 use netns::NetworkNamespace;
 use rtnetlink::{LinkUnspec, LinkVeth, packet_route::link::LinkAttribute};
 
@@ -40,7 +40,7 @@ pub struct Interface {
 
 pub struct InterfaceConfig<'a> {
     interface: &'a Interface,
-    address: Vec<(IpAddr, u8)>,
+    addresses: Vec<IpNet>,
     up: Option<bool>,
 }
 
@@ -193,7 +193,7 @@ impl Interface {
     pub fn configure(&self) -> InterfaceConfig<'_> {
         InterfaceConfig {
             interface: self,
-            address: Vec::new(),
+            addresses: Vec::new(),
             up: None,
         }
     }
@@ -246,15 +246,17 @@ impl Interface {
             .await
     }
 
-    pub async fn add_address(&self, address: IpAddr, prefix_len: u8) -> Result<()> {
+    pub async fn add_address(&self, address: IpNet) -> Result<()> {
         let index = self.index().await?;
+        let ip = address.addr();
+        let prefix_len = address.prefix_len();
 
         self.host
             .node
             .run_netlink(move |handle| async move {
                 handle
                     .address()
-                    .add(index, address, prefix_len)
+                    .add(index, ip, prefix_len)
                     .execute()
                     .await?;
                 Ok(())
@@ -286,8 +288,8 @@ impl Interface {
 }
 
 impl<'a> InterfaceConfig<'a> {
-    pub fn add_address(mut self, address: IpAddr, prefix_len: u8) -> Self {
-        self.address.push((address, prefix_len));
+    pub fn add_address(mut self, address: IpNet) -> Self {
+        self.addresses.push(address);
         self
     }
 
@@ -302,8 +304,8 @@ impl<'a> InterfaceConfig<'a> {
     }
 
     pub async fn apply(self) -> Result<()> {
-        for (address, prefix_len) in self.address {
-            self.interface.add_address(address, prefix_len).await?;
+        for address in self.addresses {
+            self.interface.add_address(address).await?;
         }
 
         if let Some(up) = self.up {

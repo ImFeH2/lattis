@@ -20,14 +20,14 @@ async fn direct_link_connects_host_addresses() -> Result<()> {
 
     iface1
         .configure()
-        .add_address(host1_ip.parse()?, 24)
+        .add_address("10.10.0.1/24".parse()?)
         .up()
         .apply()
         .await?;
 
     iface2
         .configure()
-        .add_address(host2_ip.parse()?, 24)
+        .add_address("10.10.0.2/24".parse()?)
         .up()
         .apply()
         .await?;
