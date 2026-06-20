@@ -12,13 +12,11 @@ async fn router_forwards_between_served_lans() -> Result<()> {
     let host1 = net.host().await?;
     let host2 = net.host().await?;
 
-    router.attach(&lan1).await?;
-    router.attach(&lan2).await?;
     lan1.set_gateway(&router).await?;
     lan2.set_gateway(&router).await?;
 
-    lan1.attach(&host1).await?;
-    let host2_addr = lan2.attach(&host2).await?;
+    host1.join(&lan1).await?;
+    let host2_addr = host2.join(&lan2).await?;
 
     host1.assert_can_reach(&host2, host2_addr.addr()).await?;
 
@@ -34,11 +32,9 @@ async fn router_updates_existing_hosts_when_serving_lans() -> Result<()> {
     let host1 = net.host().await?;
     let host2 = net.host().await?;
 
-    lan1.attach(&host1).await?;
-    let host2_addr = lan2.attach(&host2).await?;
+    host1.join(&lan1).await?;
+    let host2_addr = host2.join(&lan2).await?;
 
-    router.attach(&lan1).await?;
-    router.attach(&lan2).await?;
     lan1.set_gateway(&router).await?;
     lan2.set_gateway(&router).await?;
 

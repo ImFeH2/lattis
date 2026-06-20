@@ -13,6 +13,7 @@ use tokio::{
 
 use crate::{
     executor::{HostTask, RuntimeConfig},
+    lan::Lan,
     net::{HostKey, Net},
     node::Node,
 };
@@ -80,6 +81,10 @@ impl Host {
         server_result?;
 
         Ok(())
+    }
+
+    pub async fn join(&self, lan: &Lan) -> Result<ipnet::Ipv4Net> {
+        lan.join_host(self).await
     }
 
     pub fn spawn<T, F, Fut>(&self, f: F) -> Result<HostTask<T>>

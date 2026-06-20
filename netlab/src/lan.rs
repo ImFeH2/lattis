@@ -37,7 +37,7 @@ pub(crate) struct LanEntry {
 }
 
 impl Lan {
-    pub async fn attach(&self, host: &Host) -> Result<Ipv4Net> {
+    pub(crate) async fn join_host(&self, host: &Host) -> Result<Ipv4Net> {
         self.net.ensure_same(host.net())?;
 
         let interface = self.attach_node(host.node()).await?;
@@ -54,12 +54,6 @@ impl Lan {
 
     pub fn name(&self) -> &str {
         &self.name
-    }
-
-    pub fn network(&self) -> Ipv4Net {
-        self.net
-            .with_state(|state| Ok(state.lans[self.key].network))
-            .expect("lan is no longer registered in net")
     }
 
     pub(crate) async fn attach_node(&self, node: Arc<Node>) -> Result<Interface> {
@@ -87,13 +81,13 @@ impl Lan {
     pub async fn set_gateway(&self, router: &Router) -> Result<()> {
         self.net.ensure_same(router.net())?;
 
+        if self.router_address(router)?.is_none() {
+            router.attach(self).await?;
+        }
+
         let (gateway, host_interfaces) = self.net.with_state_mut(|state| {
             let lan = &mut state.lans[self.key];
-            let gateway = lan
-                .routers
-                .get(&router.key())
-                .context("router is not attached to lan")?
-                .addr();
+            let gateway = lan.routers[&router.key()].addr();
 
             ensure!(lan.gateway.is_none(), "lan already has a gateway");
 
@@ -178,6 +172,11 @@ impl Lan {
 
             Ok(())
         })
+    }
+
+    fn router_address(&self, router: &Router) -> Result<Option<Ipv4Net>> {
+        self.net
+            .with_state(|state| Ok(state.lans[self.key].routers.get(&router.key()).copied()))
     }
 
     pub(crate) async fn create(
