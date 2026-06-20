@@ -15,7 +15,7 @@ use crate::{
     executor::{HostTask, RuntimeConfig},
     lan::Lan,
     net::{HostKey, Net},
-    node::Node,
+    netns::NamespaceNode,
 };
 
 const REACHABILITY_TIMEOUT: Duration = Duration::from_secs(1);
@@ -29,7 +29,7 @@ pub struct Host {
 
 #[derive(Debug)]
 pub(crate) struct HostEntry {
-    pub(crate) node: Arc<Node>,
+    pub(crate) node: Arc<NamespaceNode>,
 }
 
 impl Host {
@@ -37,7 +37,7 @@ impl Host {
         &self.name
     }
 
-    pub(crate) fn node(&self) -> Arc<Node> {
+    pub(crate) fn node(&self) -> Arc<NamespaceNode> {
         self.net
             .with_state(|state| Ok(state.hosts[self.key].node.clone()))
             .expect("host is no longer registered in net")
@@ -118,7 +118,7 @@ impl Host {
     }
 
     pub(crate) async fn create(net: Net, name: &str, runtime: RuntimeConfig) -> Result<Self> {
-        let node = Node::new(name, runtime).await?;
+        let node = NamespaceNode::new(name, runtime).await?;
         let key = net.with_state_mut(|state| Ok(state.hosts.insert(HostEntry { node })))?;
 
         Ok(Self {

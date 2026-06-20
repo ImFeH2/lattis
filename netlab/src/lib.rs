@@ -7,7 +7,6 @@ mod nat;
 mod net;
 mod netlink;
 mod netns;
-mod node;
 mod router;
 
 pub use crate::executor::{HostTask, RuntimeConfig};

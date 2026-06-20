@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use anyhow::{Context, Result};
 use nix::sched::{CloneFlags, setns};
 use rtnetlink::NETNS_PATH;
@@ -6,6 +8,8 @@ use std::os::fd::{AsRawFd, RawFd};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
+
+use crate::executor::{NamespaceExecutor, RuntimeConfig};
 
 const THREAD_SELF_NS_PATH: &str = "/proc/thread-self/ns/net";
 
@@ -26,6 +30,47 @@ pub(crate) struct NetworkNamespaceHandle {
 #[derive(Debug)]
 pub(crate) struct NetworkNamespaceContext {
     original: Option<File>,
+}
+
+#[derive(Debug)]
+pub(crate) struct NamespaceNode {
+    pub(crate) executor: NamespaceExecutor,
+    pub(crate) namespace: NetworkNamespace,
+}
+
+impl NamespaceNode {
+    pub(crate) async fn new(name: &str, config: RuntimeConfig) -> Result<Arc<Self>> {
+        let namespace = NetworkNamespace::new(name).await?;
+        let executor = NamespaceExecutor::new(&namespace, config).await?;
+
+        Ok(Arc::new(Self {
+            executor,
+            namespace,
+        }))
+    }
+
+    pub(crate) async fn run_netlink<T, F, Fut>(&self, f: F) -> Result<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(rtnetlink::Handle) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<T>> + Send + 'static,
+    {
+        self.executor
+            .run(move || async move {
+                let (connection, handle, _) = rtnetlink::new_connection()?;
+                tokio::spawn(connection);
+                f(handle).await
+            })
+            .await
+    }
+
+    pub(crate) async fn run_blocking<T, F>(&self, f: F) -> Result<T>
+    where
+        T: Send + 'static,
+        F: FnOnce() -> Result<T> + Send + 'static,
+    {
+        self.executor.spawn_blocking(f)?.await
+    }
 }
 
 impl NetworkNamespace {

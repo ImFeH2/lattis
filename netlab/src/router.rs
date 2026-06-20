@@ -12,7 +12,7 @@ use crate::{
     lan::Lan,
     nat::{self, NatRule, NatType},
     net::{LanKey, Net, RouterKey},
-    node::Node,
+    netns::NamespaceNode,
 };
 
 #[derive(Debug, Clone)]
@@ -26,7 +26,7 @@ pub struct Router {
 pub(crate) struct RouterEntry {
     pub(crate) lans: HashSet<LanKey>,
     pub(crate) nat_lans: HashMap<LanKey, NatType>,
-    pub(crate) node: Arc<Node>,
+    pub(crate) node: Arc<NamespaceNode>,
 }
 
 impl Router {
@@ -92,7 +92,7 @@ impl Router {
         &self.net
     }
 
-    fn node(&self) -> Arc<Node> {
+    fn node(&self) -> Arc<NamespaceNode> {
         self.net
             .with_state(|state| Ok(state.routers[self.key].node.clone()))
             .expect("router is no longer registered in net")
@@ -132,7 +132,7 @@ impl Router {
     }
 
     pub(crate) async fn create(net: Net, name: &str, runtime: RuntimeConfig) -> Result<Self> {
-        let node = Node::new(name, runtime).await?;
+        let node = NamespaceNode::new(name, runtime).await?;
         let key = net.with_state_mut(|state| {
             Ok(state.routers.insert(RouterEntry {
                 lans: HashSet::new(),

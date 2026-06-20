@@ -14,7 +14,7 @@ use crate::{
     link::create_veth_pair,
     net::{HostKey, LanKey, Net, RouterKey},
     netlink::{allocate_lan_name, link_index},
-    node::Node,
+    netns::NamespaceNode,
     router::Router,
 };
 
@@ -31,7 +31,7 @@ pub(crate) struct LanEntry {
     pub(crate) hosts: HashMap<HostKey, (Ipv4Net, Interface)>,
     pub(crate) index: u32,
     pub(crate) network: Ipv4Net,
-    pub(crate) node: Arc<Node>,
+    pub(crate) node: Arc<NamespaceNode>,
     pub(crate) next_host: usize,
     pub(crate) routers: HashMap<RouterKey, Ipv4Net>,
 }
@@ -60,7 +60,7 @@ impl Lan {
         &self.name
     }
 
-    pub(crate) async fn attach_node(&self, node: Arc<Node>) -> Result<Interface> {
+    pub(crate) async fn attach_node(&self, node: Arc<NamespaceNode>) -> Result<Interface> {
         let (lan_port, node_interface) = create_veth_pair(self.node(), node).await?;
 
         self.attach_port(&lan_port).await?;
@@ -187,7 +187,7 @@ impl Lan {
             .expect("lan is no longer registered in net")
     }
 
-    fn node(&self) -> Arc<Node> {
+    fn node(&self) -> Arc<NamespaceNode> {
         self.net
             .with_state(|state| Ok(state.lans[self.key].node.clone()))
             .expect("lan is no longer registered in net")
@@ -212,7 +212,7 @@ impl Lan {
         name: &str,
         runtime: RuntimeConfig,
     ) -> Result<Self> {
-        let node = Node::new(name, runtime).await?;
+        let node = NamespaceNode::new(name, runtime).await?;
 
         let label = name.to_string();
         let index = node

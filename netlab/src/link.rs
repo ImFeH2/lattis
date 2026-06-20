@@ -6,11 +6,11 @@ use rtnetlink::{
     packet_route::link::{InfoData, InfoKind, InfoVeth},
 };
 
-use crate::{interface::Interface, netlink::allocate_veth_names, node::Node};
+use crate::{interface::Interface, netlink::allocate_veth_names, netns::NamespaceNode};
 
 pub(crate) async fn create_veth_pair(
-    left_node: Arc<Node>,
-    right_node: Arc<Node>,
+    left_node: Arc<NamespaceNode>,
+    right_node: Arc<NamespaceNode>,
 ) -> Result<(Interface, Interface)> {
     let right_namespace = right_node.namespace.raw_fd();
 

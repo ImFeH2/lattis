@@ -4,16 +4,16 @@ use anyhow::Result;
 use ipnet::IpNet;
 use rtnetlink::{LinkUnspec, RouteMessageBuilder};
 
-use crate::{netlink::link_index, node::Node};
+use crate::{netlink::link_index, netns::NamespaceNode};
 
 #[derive(Debug, Clone)]
 pub(crate) struct Interface {
     name: String,
-    node: Arc<Node>,
+    node: Arc<NamespaceNode>,
 }
 
 impl Interface {
-    pub(crate) async fn new(name: String, node: Arc<Node>) -> Result<Self> {
+    pub(crate) async fn new(name: String, node: Arc<NamespaceNode>) -> Result<Self> {
         let interface = Self { name, node };
 
         interface.up().await?;
