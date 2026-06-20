@@ -15,6 +15,7 @@ use crate::{
     net::{LanKey, Net, RouterKey},
     netlink::{allocate_lan_name, link_index},
     node::Node,
+    router::Router,
 };
 
 #[derive(Clone, Debug)]
@@ -69,17 +70,6 @@ impl Lan {
         Ok(node_interface)
     }
 
-    pub(crate) fn ensure_gateway_available(&self) -> Result<()> {
-        self.net.with_state(|state| {
-            ensure!(
-                state.lans[self.key].gateway.is_none(),
-                "lan already has a gateway"
-            );
-
-            Ok(())
-        })
-    }
-
     pub(crate) fn allocate_address(&self) -> Result<Ipv4Net> {
         self.net.with_state_mut(|state| {
             let lan = &mut state.lans[self.key];
@@ -94,14 +84,21 @@ impl Lan {
         })
     }
 
-    pub(crate) async fn set_gateway(&self, gateway: Ipv4Addr) -> Result<()> {
-        let host_interfaces = self.net.with_state_mut(|state| {
+    pub async fn set_gateway(&self, router: &Router) -> Result<()> {
+        self.net.ensure_same(router.net())?;
+
+        let (gateway, host_interfaces) = self.net.with_state_mut(|state| {
             let lan = &mut state.lans[self.key];
+            let gateway = lan
+                .routers
+                .get(&router.key())
+                .context("router is not attached to lan")?
+                .addr();
 
             ensure!(lan.gateway.is_none(), "lan already has a gateway");
 
             lan.gateway = Some(gateway);
-            Ok(lan.host_interfaces.clone())
+            Ok((gateway, lan.host_interfaces.clone()))
         })?;
 
         for interface in host_interfaces {

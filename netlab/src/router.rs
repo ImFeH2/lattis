@@ -43,15 +43,6 @@ impl Router {
         Ok(address)
     }
 
-    pub async fn serve(&self, lan: &Lan) -> Result<()> {
-        lan.ensure_gateway_available()?;
-
-        let address = self.attach(lan).await?;
-        lan.set_gateway(address.addr()).await?;
-
-        Ok(())
-    }
-
     async fn enable_ipv4_forwarding(&self) -> Result<()> {
         self.node()
             .run_blocking(|| {
@@ -63,6 +54,14 @@ impl Router {
                 Ok(())
             })
             .await
+    }
+
+    pub(crate) fn key(&self) -> RouterKey {
+        self.key
+    }
+
+    pub(crate) fn net(&self) -> &Net {
+        &self.net
     }
 
     fn node(&self) -> Arc<Node> {
