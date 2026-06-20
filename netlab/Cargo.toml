@@ -51,6 +51,7 @@ required-features = ["netlab-tests"]
 [[test]]
 name = "nat_type"
 path = "tests/nat_type.rs"
+required-features = ["netlab-tests"]
 
 [[test]]
 name = "router"

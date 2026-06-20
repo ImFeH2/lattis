@@ -1,9 +1,10 @@
 use std::{
     collections::{HashMap, HashSet},
     net::{Ipv4Addr, SocketAddrV4},
+    sync::{Arc, Mutex},
 };
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, ensure};
 use ipnet::Ipv4Net;
 use nftables::{
     batch::Batch,
@@ -13,11 +14,13 @@ use nftables::{
     stmt::{Match, Operator, Statement},
     types::{NfChainPolicy, NfChainType, NfFamily, NfHook},
 };
+use tokio::{net::UdpSocket, sync::watch};
 
 const MASQUERADE_TABLE: &str = "netlab_masquerade";
 const FORWARD_CHAIN: &str = "forward";
 const POSTROUTING_CHAIN: &str = "postrouting";
 const FIRST_DYNAMIC_PORT: u16 = 49152;
+const UDP_BUFFER_LEN: usize = 65_535;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NatType {
@@ -33,13 +36,18 @@ pub(crate) struct NatRule {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct UdpTranslation {
-    pub destination: SocketAddrV4,
-    pub source: SocketAddrV4,
+pub(crate) struct UdpTranslation {
+    pub(crate) destination: SocketAddrV4,
+    pub(crate) source: SocketAddrV4,
 }
 
 #[derive(Debug)]
-pub struct NatTable {
+pub(crate) struct UdpNat {
+    shutdown: watch::Sender<bool>,
+}
+
+#[derive(Debug)]
+pub(crate) struct NatTable {
     mappings: HashMap<NatMappingKey, NatMapping>,
     nat_type: NatType,
     next_port: u16,
@@ -58,6 +66,25 @@ struct NatMapping {
     contacts: HashSet<SocketAddrV4>,
     public: SocketAddrV4,
     source: SocketAddrV4,
+}
+
+struct PrivateUdpNatWorker {
+    private_peer: SocketAddrV4,
+    private_socket: Arc<UdpSocket>,
+    public_addr: Ipv4Addr,
+    public_sockets: Arc<Mutex<HashMap<u16, Arc<UdpSocket>>>>,
+    private_sender: Arc<UdpSocket>,
+    remote: SocketAddrV4,
+    shutdown: watch::Receiver<bool>,
+    table: Arc<Mutex<NatTable>>,
+}
+
+struct PublicUdpNatWorker {
+    private_peer: SocketAddrV4,
+    private_sender: Arc<UdpSocket>,
+    public_socket: Arc<UdpSocket>,
+    shutdown: watch::Receiver<bool>,
+    table: Arc<Mutex<NatTable>>,
 }
 
 pub(crate) fn apply_masquerade(rules: Vec<NatRule>) -> Result<()> {
@@ -84,7 +111,7 @@ pub(crate) fn apply_masquerade(rules: Vec<NatRule>) -> Result<()> {
 }
 
 impl NatTable {
-    pub fn new(public_addr: Ipv4Addr, nat_type: NatType) -> Self {
+    pub(crate) fn new(public_addr: Ipv4Addr, nat_type: NatType) -> Self {
         Self {
             mappings: HashMap::new(),
             nat_type,
@@ -94,7 +121,7 @@ impl NatTable {
         }
     }
 
-    pub fn translate_inbound(
+    pub(crate) fn translate_inbound(
         &self,
         source: SocketAddrV4,
         destination: SocketAddrV4,
@@ -116,7 +143,7 @@ impl NatTable {
         })
     }
 
-    pub fn translate_outbound(
+    pub(crate) fn translate_outbound(
         &mut self,
         source: SocketAddrV4,
         destination: SocketAddrV4,
@@ -171,6 +198,49 @@ impl NatTable {
     }
 }
 
+impl UdpNat {
+    pub(crate) async fn start(
+        private_addr: Ipv4Addr,
+        public_addr: Ipv4Addr,
+        private_peer: SocketAddrV4,
+        nat_type: NatType,
+        remotes: Vec<(u16, SocketAddrV4)>,
+    ) -> Result<Self> {
+        let table = Arc::new(Mutex::new(NatTable::new(public_addr, nat_type)));
+        let public_sockets = Arc::new(Mutex::new(HashMap::new()));
+        let private_sender = Arc::new(UdpSocket::bind(SocketAddrV4::new(private_addr, 0)).await?);
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
+        for (private_port, remote) in remotes {
+            ensure!(private_port != 0, "udp nat private port must be non-zero");
+
+            let private_socket =
+                Arc::new(UdpSocket::bind(SocketAddrV4::new(private_addr, private_port)).await?);
+
+            spawn_private_udp_nat_worker(PrivateUdpNatWorker {
+                private_peer,
+                private_socket,
+                public_addr,
+                public_sockets: Arc::clone(&public_sockets),
+                private_sender: Arc::clone(&private_sender),
+                remote,
+                shutdown: shutdown_rx.clone(),
+                table: Arc::clone(&table),
+            });
+        }
+
+        Ok(Self {
+            shutdown: shutdown_tx,
+        })
+    }
+}
+
+impl Drop for UdpNat {
+    fn drop(&mut self) {
+        let _ = self.shutdown.send(true);
+    }
+}
+
 impl NatType {
     fn allows_inbound(self, contacts: &HashSet<SocketAddrV4>, source: SocketAddrV4) -> bool {
         match self {
@@ -189,6 +259,138 @@ impl NatType {
             source,
         }
     }
+}
+
+fn spawn_private_udp_nat_worker(worker: PrivateUdpNatWorker) {
+    tokio::spawn(async move {
+        let mut buffer = vec![0; UDP_BUFFER_LEN];
+        let mut shutdown = worker.shutdown.clone();
+
+        loop {
+            tokio::select! {
+                result = worker.private_socket.recv_from(&mut buffer) => {
+                    match result {
+                        Ok((len, _)) => {
+                            if let Err(err) = forward_outbound_udp_packet(&worker, &buffer[..len]).await {
+                                eprintln!("failed to forward outbound UDP packet: {}", err);
+                            }
+                        }
+                        Err(err) => eprintln!("failed to receive outbound UDP packet: {}", err),
+                    }
+                }
+                changed = shutdown.changed() => {
+                    if changed.is_err() || *shutdown.borrow() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+}
+
+fn spawn_public_udp_nat_worker(worker: PublicUdpNatWorker) {
+    tokio::spawn(async move {
+        let mut buffer = vec![0; UDP_BUFFER_LEN];
+        let mut shutdown = worker.shutdown.clone();
+
+        loop {
+            tokio::select! {
+                result = worker.public_socket.recv_from(&mut buffer) => {
+                    match result {
+                        Ok((len, source)) => {
+                            if let std::net::SocketAddr::V4(source) = source
+                                && let Err(err) = forward_inbound_udp_packet(&worker, source, &buffer[..len]).await
+                            {
+                                eprintln!("failed to forward inbound UDP packet: {}", err);
+                            }
+                        }
+                        Err(err) => eprintln!("failed to receive inbound UDP packet: {}", err),
+                    }
+                }
+                changed = shutdown.changed() => {
+                    if changed.is_err() || *shutdown.borrow() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+}
+
+async fn forward_outbound_udp_packet(worker: &PrivateUdpNatWorker, payload: &[u8]) -> Result<()> {
+    let translation = {
+        let mut table = worker
+            .table
+            .lock()
+            .map_err(|_| anyhow!("nat table lock poisoned"))?;
+
+        table.translate_outbound(worker.private_peer, worker.remote)?
+    };
+    let public_socket = public_udp_socket_for(worker, translation.source.port()).await?;
+
+    public_socket
+        .send_to(payload, translation.destination)
+        .await?;
+
+    Ok(())
+}
+
+async fn forward_inbound_udp_packet(
+    worker: &PublicUdpNatWorker,
+    source: SocketAddrV4,
+    payload: &[u8],
+) -> Result<()> {
+    let destination = match worker.public_socket.local_addr()? {
+        std::net::SocketAddr::V4(destination) => destination,
+        std::net::SocketAddr::V6(_) => unreachable!("IPv6 bind requested for IPv4 socket"),
+    };
+    let translation = worker
+        .table
+        .lock()
+        .map_err(|_| anyhow!("nat table lock poisoned"))?
+        .translate_inbound(source, destination);
+
+    if translation.is_some() {
+        worker
+            .private_sender
+            .send_to(payload, worker.private_peer)
+            .await?;
+    }
+
+    Ok(())
+}
+
+async fn public_udp_socket_for(
+    worker: &PrivateUdpNatWorker,
+    public_port: u16,
+) -> Result<Arc<UdpSocket>> {
+    if let Some(socket) = worker
+        .public_sockets
+        .lock()
+        .map_err(|_| anyhow!("udp nat public socket map lock poisoned"))?
+        .get(&public_port)
+        .cloned()
+    {
+        return Ok(socket);
+    }
+
+    let public_socket =
+        Arc::new(UdpSocket::bind(SocketAddrV4::new(worker.public_addr, public_port)).await?);
+    worker
+        .public_sockets
+        .lock()
+        .map_err(|_| anyhow!("udp nat public socket map lock poisoned"))?
+        .insert(public_port, Arc::clone(&public_socket));
+
+    spawn_public_udp_nat_worker(PublicUdpNatWorker {
+        private_peer: worker.private_peer,
+        private_sender: Arc::clone(&worker.private_sender),
+        public_socket: Arc::clone(&public_socket),
+        shutdown: worker.shutdown.clone(),
+        table: Arc::clone(&worker.table),
+    });
+
+    Ok(public_socket)
 }
 
 fn has_masquerade_table(objects: &[NfObject<'_>]) -> bool {

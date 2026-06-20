@@ -1,11 +1,11 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, net::SocketAddrV4, sync::Arc};
 
 use anyhow::{Context, Result};
 use ipnet::Ipv4Net;
 use sysctl::Sysctl;
 
 use crate::{
-    nat::{self, NatRule},
+    nat::{self, NatRule, NatType, UdpNat},
     net::{LanKey, Net, RouterKey},
     network::netns::NamespaceNode,
     runtime::executor::RuntimeConfig,
@@ -24,6 +24,7 @@ pub(crate) struct RouterEntry {
     pub(crate) lans: HashSet<LanKey>,
     pub(crate) masquerade_lans: HashSet<LanKey>,
     pub(crate) node: Arc<NamespaceNode>,
+    pub(crate) udp_nats: Vec<UdpNat>,
 }
 
 impl Router {
@@ -60,6 +61,31 @@ impl Router {
         self.remember_masquerade_lan(lan.key())?;
 
         Ok(address)
+    }
+
+    pub async fn enable_udp_nat(
+        &self,
+        private_lan: &Lan,
+        public_lan: &Lan,
+        private_peer: SocketAddrV4,
+        nat_type: NatType,
+        remotes: Vec<(u16, SocketAddrV4)>,
+    ) -> Result<()> {
+        self.net.ensure_same(private_lan.net())?;
+        self.net.ensure_same(public_lan.net())?;
+
+        let private_addr = self.attach(private_lan).await?.addr();
+        let public_addr = self.attach(public_lan).await?.addr();
+
+        let nat = self
+            .node()
+            .executor
+            .run(move || async move {
+                UdpNat::start(private_addr, public_addr, private_peer, nat_type, remotes).await
+            })
+            .await?;
+
+        self.remember_udp_nat(nat)
     }
 
     async fn enable_ipv4_forwarding(&self) -> Result<()> {
@@ -127,6 +153,14 @@ impl Router {
         })
     }
 
+    fn remember_udp_nat(&self, nat: UdpNat) -> Result<()> {
+        self.net.with_state_mut(|state| {
+            state.routers[self.key].udp_nats.push(nat);
+
+            Ok(())
+        })
+    }
+
     pub(crate) async fn create(net: Net, name: &str, runtime: RuntimeConfig) -> Result<Self> {
         let node = NamespaceNode::new(name, runtime).await?;
         let key = net.with_state_mut(|state| {
@@ -134,6 +168,7 @@ impl Router {
                 lans: HashSet::new(),
                 masquerade_lans: HashSet::new(),
                 node,
+                udp_nats: Vec::new(),
             }))
         })?;
 
