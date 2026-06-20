@@ -1,49 +1,59 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use ipnet::Ipv4Net;
 use sysctl::Sysctl;
 
-use crate::{executor::RuntimeConfig, lan::Lan, node::Node};
+use crate::{
+    executor::RuntimeConfig,
+    lan::Lan,
+    net::{LanKey, Net, RouterKey},
+    node::Node,
+};
 
 #[derive(Debug, Clone)]
 pub struct Router {
-    node: Arc<Node>,
+    net: Net,
+    key: RouterKey,
+    name: String,
 }
 
-#[derive(Debug, Clone)]
-pub struct RouterBuilder {
-    name: String,
-    runtime: RuntimeConfig,
+#[derive(Debug)]
+pub(crate) struct RouterEntry {
+    pub(crate) lans: Vec<LanKey>,
+    pub(crate) node: Arc<Node>,
 }
 
 impl Router {
-    pub async fn new() -> Result<Self> {
-        Self::builder().build().await
-    }
-
-    pub fn builder() -> RouterBuilder {
-        RouterBuilder::new()
-    }
-
     pub fn name(&self) -> &str {
-        &self.node.label
+        &self.name
     }
 
-    pub async fn serve(&self, lan: &Lan) -> Result<()> {
+    pub async fn attach(&self, lan: &Lan) -> Result<Ipv4Net> {
+        self.net.ensure_same(lan.net())?;
         self.enable_ipv4_forwarding().await?;
-        lan.ensure_gateway_available()?;
 
-        let interface = lan.attach_node(self.node.clone()).await?;
+        let interface = lan.attach_node(self.node()).await?;
         let address = lan.allocate_address()?;
 
         interface.add_address(address.into()).await?;
+        self.remember_lan(lan.key())?;
+        lan.remember_router(self.key, address)?;
+
+        Ok(address)
+    }
+
+    pub async fn serve(&self, lan: &Lan) -> Result<()> {
+        lan.ensure_gateway_available()?;
+
+        let address = self.attach(lan).await?;
         lan.set_gateway(address.addr()).await?;
 
         Ok(())
     }
 
     async fn enable_ipv4_forwarding(&self) -> Result<()> {
-        self.node
+        self.node()
             .run_blocking(|| {
                 let ip_forward = sysctl::Ctl::new("net.ipv4.ip_forward")
                     .context("failed to open net.ipv4.ip_forward sysctl")?;
@@ -54,29 +64,34 @@ impl Router {
             })
             .await
     }
-}
 
-impl RouterBuilder {
-    fn new() -> Self {
-        Self {
-            name: "router".to_string(),
-            runtime: RuntimeConfig::CurrentThread,
-        }
+    fn node(&self) -> Arc<Node> {
+        self.net
+            .with_state(|state| Ok(state.routers[self.key].node.clone()))
+            .expect("router is no longer registered in net")
     }
 
-    pub async fn build(self) -> Result<Router> {
-        Ok(Router {
-            node: Node::new(&self.name, self.runtime).await?,
+    fn remember_lan(&self, lan: LanKey) -> Result<()> {
+        self.net.with_state_mut(|state| {
+            state.routers[self.key].lans.push(lan);
+
+            Ok(())
         })
     }
 
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.name = name.into();
-        self
-    }
+    pub(crate) async fn create(net: Net, name: &str, runtime: RuntimeConfig) -> Result<Self> {
+        let node = Node::new(name, runtime).await?;
+        let key = net.with_state_mut(|state| {
+            Ok(state.routers.insert(RouterEntry {
+                lans: Vec::new(),
+                node,
+            }))
+        })?;
 
-    pub fn runtime(mut self, runtime: RuntimeConfig) -> Self {
-        self.runtime = runtime;
-        self
+        Ok(Self {
+            net,
+            key,
+            name: name.to_string(),
+        })
     }
 }

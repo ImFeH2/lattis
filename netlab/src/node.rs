@@ -9,7 +9,6 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Node {
-    pub(crate) label: String,
     pub(crate) executor: NamespaceExecutor,
     pub(crate) namespace: NetworkNamespace,
 }
@@ -20,7 +19,6 @@ impl Node {
         let executor = NamespaceExecutor::new(&namespace, config).await?;
 
         Ok(Arc::new(Self {
-            label: name.to_string(),
             executor,
             namespace,
         }))

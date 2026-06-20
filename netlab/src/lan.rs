@@ -1,7 +1,4 @@
-use std::{
-    net::Ipv4Addr,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, net::Ipv4Addr, sync::Arc};
 
 use anyhow::{Context, Result, ensure};
 use ipnet::Ipv4Net;
@@ -15,42 +12,33 @@ use crate::{
     host::Host,
     interface::Interface,
     link::create_veth_pair,
+    net::{LanKey, Net, RouterKey},
     netlink::{allocate_lan_name, link_index},
     node::Node,
 };
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Lan {
-    index: u32,
-    network: Ipv4Net,
-    node: Arc<Node>,
-    state: Mutex<LanState>,
-}
-
-#[derive(Debug, Clone)]
-pub struct LanBuilder {
+    net: Net,
+    key: LanKey,
     name: String,
-    network: Ipv4Net,
-    runtime: RuntimeConfig,
 }
 
 #[derive(Debug)]
-struct LanState {
-    gateway: Option<Ipv4Addr>,
-    host_interfaces: Vec<Interface>,
-    next_host: usize,
+pub(crate) struct LanEntry {
+    pub(crate) gateway: Option<Ipv4Addr>,
+    pub(crate) host_interfaces: Vec<Interface>,
+    pub(crate) index: u32,
+    pub(crate) network: Ipv4Net,
+    pub(crate) node: Arc<Node>,
+    pub(crate) next_host: usize,
+    pub(crate) routers: HashMap<RouterKey, Ipv4Net>,
 }
 
 impl Lan {
-    pub async fn new(network: Ipv4Net) -> Result<Self> {
-        Self::builder(network).build().await
-    }
-
-    pub fn builder(network: Ipv4Net) -> LanBuilder {
-        LanBuilder::new(network)
-    }
-
     pub async fn attach(&self, host: &Host) -> Result<Ipv4Net> {
+        self.net.ensure_same(host.net())?;
+
         let interface = self.attach_node(host.node()).await?;
         let address = self.allocate_address()?;
 
@@ -64,15 +52,17 @@ impl Lan {
     }
 
     pub fn name(&self) -> &str {
-        &self.node.label
+        &self.name
     }
 
     pub fn network(&self) -> Ipv4Net {
-        self.network
+        self.net
+            .with_state(|state| Ok(state.lans[self.key].network))
+            .expect("lan is no longer registered in net")
     }
 
     pub(crate) async fn attach_node(&self, node: Arc<Node>) -> Result<Interface> {
-        let (lan_port, node_interface) = create_veth_pair(self.node.clone(), node).await?;
+        let (lan_port, node_interface) = create_veth_pair(self.node(), node).await?;
 
         self.attach_port(&lan_port).await?;
 
@@ -80,44 +70,39 @@ impl Lan {
     }
 
     pub(crate) fn ensure_gateway_available(&self) -> Result<()> {
-        let state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("lan state lock poisoned"))?;
+        self.net.with_state(|state| {
+            ensure!(
+                state.lans[self.key].gateway.is_none(),
+                "lan already has a gateway"
+            );
 
-        ensure!(state.gateway.is_none(), "lan already has a gateway");
-
-        Ok(())
+            Ok(())
+        })
     }
 
     pub(crate) fn allocate_address(&self) -> Result<Ipv4Net> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("lan state lock poisoned"))?;
+        self.net.with_state_mut(|state| {
+            let lan = &mut state.lans[self.key];
+            let network = lan.network;
+            let address = network
+                .hosts()
+                .nth(lan.next_host)
+                .context("lan address pool is exhausted")?;
+            lan.next_host += 1;
 
-        let address = self
-            .network
-            .hosts()
-            .nth(state.next_host)
-            .context("lan address pool is exhausted")?;
-        state.next_host += 1;
-
-        Ok(Ipv4Net::new(address, self.network.prefix_len())?)
+            Ok(Ipv4Net::new(address, network.prefix_len())?)
+        })
     }
 
     pub(crate) async fn set_gateway(&self, gateway: Ipv4Addr) -> Result<()> {
-        let host_interfaces = {
-            let mut state = self
-                .state
-                .lock()
-                .map_err(|_| anyhow::anyhow!("lan state lock poisoned"))?;
+        let host_interfaces = self.net.with_state_mut(|state| {
+            let lan = &mut state.lans[self.key];
 
-            ensure!(state.gateway.is_none(), "lan already has a gateway");
+            ensure!(lan.gateway.is_none(), "lan already has a gateway");
 
-            state.gateway = Some(gateway);
-            state.host_interfaces.clone()
-        };
+            lan.gateway = Some(gateway);
+            Ok(lan.host_interfaces.clone())
+        })?;
 
         for interface in host_interfaces {
             interface.set_default_route(gateway).await?;
@@ -127,10 +112,10 @@ impl Lan {
     }
 
     async fn attach_port(&self, interface: &Interface) -> Result<()> {
-        let bridge_index = self.index;
+        let bridge_index = self.index();
         let port_index = interface.index().await?;
 
-        self.node
+        self.node()
             .run_netlink(move |handle| async move {
                 handle
                     .link()
@@ -162,30 +147,51 @@ impl Lan {
     }
 
     fn remember_host_interface(&self, interface: &Interface) -> Result<Option<Ipv4Addr>> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow::anyhow!("lan state lock poisoned"))?;
+        self.net.with_state_mut(|state| {
+            let lan = &mut state.lans[self.key];
+            lan.host_interfaces.push(interface.clone());
 
-        state.host_interfaces.push(interface.clone());
-
-        Ok(state.gateway)
-    }
-}
-
-impl LanBuilder {
-    fn new(network: Ipv4Net) -> Self {
-        Self {
-            name: "lan".to_string(),
-            network,
-            runtime: RuntimeConfig::CurrentThread,
-        }
+            Ok(lan.gateway)
+        })
     }
 
-    pub async fn build(self) -> Result<Lan> {
-        let node = Node::new(&self.name, self.runtime).await?;
+    pub(crate) fn net(&self) -> &Net {
+        &self.net
+    }
 
-        let label = self.name;
+    pub(crate) fn key(&self) -> LanKey {
+        self.key
+    }
+
+    fn index(&self) -> u32 {
+        self.net
+            .with_state(|state| Ok(state.lans[self.key].index))
+            .expect("lan is no longer registered in net")
+    }
+
+    fn node(&self) -> Arc<Node> {
+        self.net
+            .with_state(|state| Ok(state.lans[self.key].node.clone()))
+            .expect("lan is no longer registered in net")
+    }
+
+    pub(crate) fn remember_router(&self, router: RouterKey, address: Ipv4Net) -> Result<()> {
+        self.net.with_state_mut(|state| {
+            state.lans[self.key].routers.insert(router, address);
+
+            Ok(())
+        })
+    }
+
+    pub(crate) async fn create(
+        net: Net,
+        network: Ipv4Net,
+        name: &str,
+        runtime: RuntimeConfig,
+    ) -> Result<Self> {
+        let node = Node::new(name, runtime).await?;
+
+        let label = name.to_string();
         let index = node
             .run_netlink(move |handle| async move {
                 let bridge = allocate_lan_name(&label, &handle).await?;
@@ -208,25 +214,22 @@ impl LanBuilder {
             })
             .await?;
 
-        Ok(Lan {
-            index,
-            network: self.network,
-            node,
-            state: Mutex::new(LanState {
+        let key = net.with_state_mut(|state| {
+            Ok(state.lans.insert(LanEntry {
                 gateway: None,
                 host_interfaces: Vec::new(),
+                index,
+                network,
+                node,
                 next_host: 0,
-            }),
+                routers: HashMap::new(),
+            }))
+        })?;
+
+        Ok(Lan {
+            net,
+            key,
+            name: name.to_string(),
         })
-    }
-
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.name = name.into();
-        self
-    }
-
-    pub fn runtime(mut self, runtime: RuntimeConfig) -> Self {
-        self.runtime = runtime;
-        self
     }
 }

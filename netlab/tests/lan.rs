@@ -1,14 +1,15 @@
 #![cfg(target_os = "linux")]
 
 use anyhow::Result;
-use netlab::{Host, Lan};
+use netlab::Net;
 
 #[tokio::test]
 async fn lan_allocates_host_addresses_in_order() -> Result<()> {
-    let lan = Lan::new("10.21.0.0/29".parse()?).await?;
-    let host1 = Host::new().await?;
-    let host2 = Host::new().await?;
-    let host3 = Host::new().await?;
+    let net = Net::new();
+    let lan = net.lan("10.21.0.0/29".parse()?).await?;
+    let host1 = net.host().await?;
+    let host2 = net.host().await?;
+    let host3 = net.host().await?;
 
     let host1_addr = lan.attach(&host1).await?;
     let host2_addr = lan.attach(&host2).await?;
@@ -23,10 +24,11 @@ async fn lan_allocates_host_addresses_in_order() -> Result<()> {
 
 #[tokio::test]
 async fn lan_connects_multiple_host_addresses() -> Result<()> {
-    let lan = Lan::new("10.20.0.0/24".parse()?).await?;
-    let host1 = Host::new().await?;
-    let host2 = Host::new().await?;
-    let host3 = Host::new().await?;
+    let net = Net::new();
+    let lan = net.lan("10.20.0.0/24".parse()?).await?;
+    let host1 = net.host().await?;
+    let host2 = net.host().await?;
+    let host3 = net.host().await?;
 
     lan.attach(&host1).await?;
     let host2_addr = lan.attach(&host2).await?;
@@ -40,10 +42,11 @@ async fn lan_connects_multiple_host_addresses() -> Result<()> {
 
 #[tokio::test]
 async fn lan_reports_exhausted_address_pool() -> Result<()> {
-    let lan = Lan::new("10.22.0.0/30".parse()?).await?;
-    let host1 = Host::new().await?;
-    let host2 = Host::new().await?;
-    let host3 = Host::new().await?;
+    let net = Net::new();
+    let lan = net.lan("10.22.0.0/30".parse()?).await?;
+    let host1 = net.host().await?;
+    let host2 = net.host().await?;
+    let host3 = net.host().await?;
 
     lan.attach(&host1).await?;
     lan.attach(&host2).await?;

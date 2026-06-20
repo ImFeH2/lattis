@@ -1,15 +1,16 @@
 #![cfg(target_os = "linux")]
 
 use anyhow::Result;
-use netlab::{Host, Lan, Router};
+use netlab::Net;
 
 #[tokio::test]
 async fn router_forwards_between_served_lans() -> Result<()> {
-    let router = Router::new().await?;
-    let lan1 = Lan::new("10.30.1.0/24".parse()?).await?;
-    let lan2 = Lan::new("10.30.2.0/24".parse()?).await?;
-    let host1 = Host::new().await?;
-    let host2 = Host::new().await?;
+    let net = Net::new();
+    let router = net.router().await?;
+    let lan1 = net.lan("10.30.1.0/24".parse()?).await?;
+    let lan2 = net.lan("10.30.2.0/24".parse()?).await?;
+    let host1 = net.host().await?;
+    let host2 = net.host().await?;
 
     router.serve(&lan1).await?;
     router.serve(&lan2).await?;
@@ -24,11 +25,12 @@ async fn router_forwards_between_served_lans() -> Result<()> {
 
 #[tokio::test]
 async fn router_updates_existing_hosts_when_serving_lans() -> Result<()> {
-    let router = Router::new().await?;
-    let lan1 = Lan::new("10.31.1.0/24".parse()?).await?;
-    let lan2 = Lan::new("10.31.2.0/24".parse()?).await?;
-    let host1 = Host::new().await?;
-    let host2 = Host::new().await?;
+    let net = Net::new();
+    let router = net.router().await?;
+    let lan1 = net.lan("10.31.1.0/24".parse()?).await?;
+    let lan2 = net.lan("10.31.2.0/24".parse()?).await?;
+    let host1 = net.host().await?;
+    let host2 = net.host().await?;
 
     lan1.attach(&host1).await?;
     let host2_addr = lan2.attach(&host2).await?;

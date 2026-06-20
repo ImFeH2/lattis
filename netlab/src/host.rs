@@ -13,6 +13,7 @@ use tokio::{
 
 use crate::{
     executor::{HostTask, RuntimeConfig},
+    net::{HostKey, Net},
     node::Node,
 };
 
@@ -20,30 +21,29 @@ const REACHABILITY_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone)]
 pub struct Host {
+    net: Net,
+    key: HostKey,
+    name: String,
+}
+
+#[derive(Debug)]
+pub(crate) struct HostEntry {
     pub(crate) node: Arc<Node>,
 }
 
-#[derive(Debug, Clone)]
-pub struct HostBuilder {
-    name: String,
-    runtime: RuntimeConfig,
-}
-
 impl Host {
-    pub async fn new() -> Result<Self> {
-        Self::builder().build().await
-    }
-
-    pub fn builder() -> HostBuilder {
-        HostBuilder::new()
-    }
-
     pub fn name(&self) -> &str {
-        &self.node.label
+        &self.name
     }
 
     pub(crate) fn node(&self) -> Arc<Node> {
-        self.node.clone()
+        self.net
+            .with_state(|state| Ok(state.hosts[self.key].node.clone()))
+            .expect("host is no longer registered in net")
+    }
+
+    pub(crate) fn net(&self) -> &Net {
+        &self.net
     }
 
     pub async fn assert_can_reach(&self, peer: &Host, peer_addr: impl Into<IpAddr>) -> Result<()> {
@@ -88,7 +88,7 @@ impl Host {
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<T>> + Send + 'static,
     {
-        self.node.executor.spawn(f)
+        self.node().executor.spawn(f)
     }
 
     pub async fn run<T, F, Fut>(&self, f: F) -> Result<T>
@@ -97,7 +97,7 @@ impl Host {
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = Result<T>> + Send + 'static,
     {
-        self.node.executor.run(f).await
+        self.node().executor.run(f).await
     }
 
     pub fn spawn_blocking<T, F>(&self, f: F) -> Result<HostTask<T>>
@@ -105,31 +105,17 @@ impl Host {
         T: Send + 'static,
         F: FnOnce() -> Result<T> + Send + 'static,
     {
-        self.node.executor.spawn_blocking(f)
-    }
-}
-
-impl HostBuilder {
-    fn new() -> Self {
-        Self {
-            name: "host".to_string(),
-            runtime: RuntimeConfig::CurrentThread,
-        }
+        self.node().executor.spawn_blocking(f)
     }
 
-    pub async fn build(self) -> Result<Host> {
-        Ok(Host {
-            node: Node::new(&self.name, self.runtime).await?,
+    pub(crate) async fn create(net: Net, name: &str, runtime: RuntimeConfig) -> Result<Self> {
+        let node = Node::new(name, runtime).await?;
+        let key = net.with_state_mut(|state| Ok(state.hosts.insert(HostEntry { node })))?;
+
+        Ok(Self {
+            net,
+            key,
+            name: name.to_string(),
         })
-    }
-
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.name = name.into();
-        self
-    }
-
-    pub fn runtime(mut self, runtime: RuntimeConfig) -> Self {
-        self.runtime = runtime;
-        self
     }
 }
