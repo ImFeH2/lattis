@@ -12,10 +12,10 @@ use tokio::{
 };
 
 use crate::{
-    executor::{HostTask, RuntimeConfig},
-    lan::Lan,
     net::{HostKey, Net},
-    netns::NamespaceNode,
+    network::netns::NamespaceNode,
+    runtime::executor::{HostTask, RuntimeConfig},
+    topology::lan::Lan,
 };
 
 const REACHABILITY_TIMEOUT: Duration = Duration::from_secs(1);

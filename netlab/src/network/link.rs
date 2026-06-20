@@ -6,7 +6,7 @@ use rtnetlink::{
     packet_route::link::{InfoData, InfoKind, InfoVeth},
 };
 
-use crate::{interface::Interface, netlink::allocate_veth_names, netns::NamespaceNode};
+use crate::network::{interface::Interface, netlink::allocate_veth_names, netns::NamespaceNode};
 
 pub(crate) async fn create_veth_pair(
     left_node: Arc<NamespaceNode>,

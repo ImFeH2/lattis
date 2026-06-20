@@ -8,7 +8,7 @@ use std::sync::{
 };
 use std::thread;
 
-use crate::netns::{NetworkNamespace, NetworkNamespaceHandle};
+use crate::network::netns::{NetworkNamespace, NetworkNamespaceHandle};
 
 type BlockingNamespaceJob = Box<dyn FnOnce() + Send + 'static>;
 type AsyncNamespaceJob = Box<dyn FnOnce(tokio::runtime::Handle) + Send + 'static>;

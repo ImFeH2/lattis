@@ -5,10 +5,12 @@ use ipnet::Ipv4Net;
 use slotmap::{SlotMap, new_key_type};
 
 use crate::{
-    executor::RuntimeConfig,
-    host::{Host, HostEntry},
-    lan::{Lan, LanEntry},
-    router::{Router, RouterEntry},
+    runtime::executor::RuntimeConfig,
+    topology::{
+        host::{Host, HostEntry},
+        lan::{Lan, LanEntry},
+        router::{Router, RouterEntry},
+    },
 };
 
 new_key_type! {

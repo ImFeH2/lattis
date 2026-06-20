@@ -4,7 +4,7 @@ use anyhow::Result;
 use ipnet::IpNet;
 use rtnetlink::{LinkUnspec, RouteMessageBuilder};
 
-use crate::{netlink::link_index, netns::NamespaceNode};
+use crate::network::{netlink::link_index, netns::NamespaceNode};
 
 #[derive(Debug, Clone)]
 pub(crate) struct Interface {

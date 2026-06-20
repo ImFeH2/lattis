@@ -1,17 +1,10 @@
-mod executor;
-mod host;
-mod interface;
-mod lan;
-mod link;
 mod nat;
 mod net;
-mod netlink;
-mod netns;
-mod router;
+mod network;
+mod runtime;
+mod topology;
 
-pub use crate::executor::{HostTask, RuntimeConfig};
-pub use crate::host::Host;
-pub use crate::lan::Lan;
 pub use crate::nat::NatType;
 pub use crate::net::Net;
-pub use crate::router::Router;
+pub use crate::runtime::executor::{HostTask, RuntimeConfig};
+pub use crate::topology::{host::Host, lan::Lan, router::Router};

@@ -8,14 +8,15 @@ use rtnetlink::{
 };
 
 use crate::{
-    executor::RuntimeConfig,
-    host::Host,
-    interface::Interface,
-    link::create_veth_pair,
     net::{HostKey, LanKey, Net, RouterKey},
-    netlink::{allocate_lan_name, link_index},
-    netns::NamespaceNode,
-    router::Router,
+    network::{
+        interface::Interface,
+        link::create_veth_pair,
+        netlink::{allocate_lan_name, link_index},
+        netns::NamespaceNode,
+    },
+    runtime::executor::RuntimeConfig,
+    topology::{host::Host, router::Router},
 };
 
 #[derive(Clone, Debug)]

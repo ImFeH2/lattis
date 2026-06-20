@@ -8,11 +8,11 @@ use ipnet::Ipv4Net;
 use sysctl::Sysctl;
 
 use crate::{
-    executor::RuntimeConfig,
-    lan::Lan,
     nat::{self, NatRule, NatType},
     net::{LanKey, Net, RouterKey},
-    netns::NamespaceNode,
+    network::netns::NamespaceNode,
+    runtime::executor::RuntimeConfig,
+    topology::lan::Lan,
 };
 
 #[derive(Debug, Clone)]

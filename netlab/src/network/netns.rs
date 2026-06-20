@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 
-use crate::executor::{NamespaceExecutor, RuntimeConfig};
+use crate::runtime::executor::{NamespaceExecutor, RuntimeConfig};
 
 const THREAD_SELF_NS_PATH: &str = "/proc/thread-self/ns/net";
 
