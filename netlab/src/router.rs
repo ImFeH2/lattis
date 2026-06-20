@@ -31,6 +31,11 @@ impl Router {
 
     pub async fn attach(&self, lan: &Lan) -> Result<Ipv4Net> {
         self.net.ensure_same(lan.net())?;
+
+        if let Some(address) = lan.router_address(self)? {
+            return Ok(address);
+        }
+
         self.enable_ipv4_forwarding().await?;
 
         let interface = lan.attach_node(self.node()).await?;

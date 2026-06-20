@@ -23,6 +23,24 @@ async fn lan_allocates_host_addresses_in_order() -> Result<()> {
 }
 
 #[tokio::test]
+async fn lan_returns_existing_host_address_when_joined_twice() -> Result<()> {
+    let net = Net::new();
+    let lan = net.lan("10.23.0.0/30".parse()?).await?;
+    let host1 = net.host().await?;
+    let host2 = net.host().await?;
+
+    let host1_addr = host1.join(&lan).await?;
+    let host1_addr_again = host1.join(&lan).await?;
+    let host2_addr = host2.join(&lan).await?;
+
+    assert_eq!(host1_addr, "10.23.0.1/30".parse()?);
+    assert_eq!(host1_addr_again, host1_addr);
+    assert_eq!(host2_addr, "10.23.0.2/30".parse()?);
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn lan_connects_multiple_host_addresses() -> Result<()> {
     let net = Net::new();
     let lan = net.lan("10.20.0.0/24".parse()?).await?;

@@ -12,7 +12,7 @@ use crate::{
     host::Host,
     interface::Interface,
     link::create_veth_pair,
-    net::{LanKey, Net, RouterKey},
+    net::{HostKey, LanKey, Net, RouterKey},
     netlink::{allocate_lan_name, link_index},
     node::Node,
     router::Router,
@@ -28,7 +28,7 @@ pub struct Lan {
 #[derive(Debug)]
 pub(crate) struct LanEntry {
     pub(crate) gateway: Option<Ipv4Addr>,
-    pub(crate) host_interfaces: Vec<Interface>,
+    pub(crate) hosts: HashMap<HostKey, (Ipv4Net, Interface)>,
     pub(crate) index: u32,
     pub(crate) network: Ipv4Net,
     pub(crate) node: Arc<Node>,
@@ -40,12 +40,16 @@ impl Lan {
     pub(crate) async fn join_host(&self, host: &Host) -> Result<Ipv4Net> {
         self.net.ensure_same(host.net())?;
 
+        if let Some(address) = self.host_address(host)? {
+            return Ok(address);
+        }
+
         let interface = self.attach_node(host.node()).await?;
         let address = self.allocate_address()?;
 
         interface.add_address(address.into()).await?;
 
-        if let Some(gateway) = self.remember_host_interface(&interface)? {
+        if let Some(gateway) = self.remember_host(host.key(), address, &interface)? {
             interface.set_default_route(gateway).await?;
         }
 
@@ -88,11 +92,20 @@ impl Lan {
         let (gateway, host_interfaces) = self.net.with_state_mut(|state| {
             let lan = &mut state.lans[self.key];
             let gateway = lan.routers[&router.key()].addr();
+            let host_interfaces = lan
+                .hosts
+                .values()
+                .map(|(_, interface)| interface.clone())
+                .collect::<Vec<_>>();
 
-            ensure!(lan.gateway.is_none(), "lan already has a gateway");
+            if let Some(existing) = lan.gateway {
+                ensure!(existing == gateway, "lan already has a different gateway");
+
+                return Ok((gateway, host_interfaces));
+            }
 
             lan.gateway = Some(gateway);
-            Ok((gateway, lan.host_interfaces.clone()))
+            Ok((gateway, host_interfaces))
         })?;
 
         for interface in host_interfaces {
@@ -137,10 +150,24 @@ impl Lan {
             .await
     }
 
-    fn remember_host_interface(&self, interface: &Interface) -> Result<Option<Ipv4Addr>> {
+    fn host_address(&self, host: &Host) -> Result<Option<Ipv4Net>> {
+        self.net.with_state(|state| {
+            Ok(state.lans[self.key]
+                .hosts
+                .get(&host.key())
+                .map(|(address, _)| *address))
+        })
+    }
+
+    fn remember_host(
+        &self,
+        host: HostKey,
+        address: Ipv4Net,
+        interface: &Interface,
+    ) -> Result<Option<Ipv4Addr>> {
         self.net.with_state_mut(|state| {
             let lan = &mut state.lans[self.key];
-            lan.host_interfaces.push(interface.clone());
+            lan.hosts.insert(host, (address, interface.clone()));
 
             Ok(lan.gateway)
         })
@@ -174,7 +201,7 @@ impl Lan {
         })
     }
 
-    fn router_address(&self, router: &Router) -> Result<Option<Ipv4Net>> {
+    pub(crate) fn router_address(&self, router: &Router) -> Result<Option<Ipv4Net>> {
         self.net
             .with_state(|state| Ok(state.lans[self.key].routers.get(&router.key()).copied()))
     }
@@ -213,7 +240,7 @@ impl Lan {
         let key = net.with_state_mut(|state| {
             Ok(state.lans.insert(LanEntry {
                 gateway: None,
-                host_interfaces: Vec::new(),
+                hosts: HashMap::new(),
                 index,
                 network,
                 node,

@@ -47,6 +47,10 @@ impl Host {
         &self.net
     }
 
+    pub(crate) fn key(&self) -> HostKey {
+        self.key
+    }
+
     pub async fn assert_can_reach(&self, peer: &Host, peer_addr: impl Into<IpAddr>) -> Result<()> {
         let peer_addr = peer_addr.into();
         let (port_tx, port_rx) = oneshot::channel();
