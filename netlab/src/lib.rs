@@ -3,6 +3,7 @@ mod host;
 mod interface;
 mod lan;
 mod link;
+mod nat;
 mod net;
 mod netlink;
 mod netns;

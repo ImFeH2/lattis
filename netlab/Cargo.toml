@@ -15,6 +15,7 @@ netlab-tests = []
 anyhow = "1"
 futures-util = "0.3"
 ipnet = "2"
+nftables = "0.6"
 nix = { version = "0.30", default-features = false, features = [
     "fs",
     "mount",
