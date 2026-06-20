@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use netlab::{Host, Lan, NatType, Net, Router};
+use netlab::{Host, Lan, Net, Router};
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::oneshot,
@@ -24,13 +24,13 @@ struct NatFixture {
 }
 
 #[tokio::test]
-async fn full_cone_allows_inbound_connections() -> Result<()> {
+async fn masquerade_lans_block_direct_inbound_connections() -> Result<()> {
     let fixture = NatFixture::new("10.35.1.0/24", "10.35.2.0/24").await?;
 
     fixture.private_lan.set_gateway(&fixture.router).await?;
     fixture
         .router
-        .enable_nat(&fixture.private_lan, NatType::FullCone)
+        .enable_masquerade(&fixture.private_lan)
         .await?;
     fixture.router.attach(&fixture.external_lan).await?;
     fixture.external_lan.set_gateway(&fixture.router).await?;
@@ -38,56 +38,27 @@ async fn full_cone_allows_inbound_connections() -> Result<()> {
     let private_addr = fixture.private_host.join(&fixture.private_lan).await?;
     fixture.external_host.join(&fixture.external_lan).await?;
 
-    fixture
+    let inbound_result = fixture
         .external_host
         .assert_can_reach(&fixture.private_host, private_addr.addr())
-        .await?;
+        .await;
+    assert!(inbound_result.is_err());
 
     Ok(())
 }
 
 #[tokio::test]
-async fn non_full_cone_types_block_inbound_connections() -> Result<()> {
-    for (nat_type, private_network, external_network) in [
-        (NatType::RestrictedCone, "10.36.1.0/24", "10.36.2.0/24"),
-        (NatType::PortRestrictedCone, "10.37.1.0/24", "10.37.2.0/24"),
-        (NatType::Symmetric, "10.38.1.0/24", "10.38.2.0/24"),
-    ] {
-        let fixture = NatFixture::new(private_network, external_network).await?;
-
-        fixture.private_lan.set_gateway(&fixture.router).await?;
-        fixture
-            .router
-            .enable_nat(&fixture.private_lan, nat_type)
-            .await?;
-        fixture.router.attach(&fixture.external_lan).await?;
-        fixture.external_lan.set_gateway(&fixture.router).await?;
-
-        let private_addr = fixture.private_host.join(&fixture.private_lan).await?;
-        fixture.external_host.join(&fixture.external_lan).await?;
-
-        let inbound_result = fixture
-            .external_host
-            .assert_can_reach(&fixture.private_host, private_addr.addr())
-            .await;
-        assert!(inbound_result.is_err());
-    }
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn repeated_nat_setup_keeps_outbound_connections_working() -> Result<()> {
+async fn repeated_masquerade_setup_keeps_outbound_connections_working() -> Result<()> {
     let fixture = NatFixture::new("10.39.1.0/24", "10.39.2.0/24").await?;
 
     fixture.private_lan.set_gateway(&fixture.router).await?;
     fixture
         .router
-        .enable_nat(&fixture.private_lan, NatType::Symmetric)
+        .enable_masquerade(&fixture.private_lan)
         .await?;
     fixture
         .router
-        .enable_nat(&fixture.private_lan, NatType::Symmetric)
+        .enable_masquerade(&fixture.private_lan)
         .await?;
     let router_external_addr = fixture.router.attach(&fixture.external_lan).await?;
     fixture.external_lan.set_gateway(&fixture.router).await?;
@@ -108,13 +79,13 @@ async fn repeated_nat_setup_keeps_outbound_connections_working() -> Result<()> {
 }
 
 #[tokio::test]
-async fn nat_setup_attaches_router_to_private_lan() -> Result<()> {
+async fn masquerade_setup_attaches_router_to_private_lan() -> Result<()> {
     let net = Net::new();
     let router = net.router().await?;
     let private_lan = net.lan("10.40.1.0/30".parse()?).await?;
     let host = net.host().await?;
 
-    let router_addr = router.enable_nat(&private_lan, NatType::Symmetric).await?;
+    let router_addr = router.enable_masquerade(&private_lan).await?;
     let router_addr_again = router.attach(&private_lan).await?;
     let host_addr = host.join(&private_lan).await?;
 
@@ -126,28 +97,29 @@ async fn nat_setup_attaches_router_to_private_lan() -> Result<()> {
 }
 
 #[tokio::test]
-async fn nat_type_can_be_replaced() -> Result<()> {
+async fn repeated_masquerade_setup_does_not_enable_direct_inbound() -> Result<()> {
     let fixture = NatFixture::new("10.41.1.0/24", "10.41.2.0/24").await?;
 
     fixture.private_lan.set_gateway(&fixture.router).await?;
     fixture
         .router
-        .enable_nat(&fixture.private_lan, NatType::FullCone)
+        .enable_masquerade(&fixture.private_lan)
         .await?;
-    fixture.router.attach(&fixture.external_lan).await?;
+    let router_external_addr = fixture.router.attach(&fixture.external_lan).await?;
     fixture.external_lan.set_gateway(&fixture.router).await?;
 
     let private_addr = fixture.private_host.join(&fixture.private_lan).await?;
-    fixture.external_host.join(&fixture.external_lan).await?;
+    let external_addr = fixture.external_host.join(&fixture.external_lan).await?;
 
-    fixture
+    let first_inbound_result = fixture
         .external_host
         .assert_can_reach(&fixture.private_host, private_addr.addr())
-        .await?;
+        .await;
+    assert!(first_inbound_result.is_err());
 
     fixture
         .router
-        .enable_nat(&fixture.private_lan, NatType::Symmetric)
+        .enable_masquerade(&fixture.private_lan)
         .await?;
 
     let inbound_result = fixture
@@ -155,6 +127,15 @@ async fn nat_type_can_be_replaced() -> Result<()> {
         .assert_can_reach(&fixture.private_host, private_addr.addr())
         .await;
     assert!(inbound_result.is_err());
+
+    let observed_peer = connect_and_observe_peer(
+        &fixture.private_host,
+        &fixture.external_host,
+        external_addr.addr(),
+    )
+    .await?;
+
+    assert_eq!(observed_peer.ip(), IpAddr::V4(router_external_addr.addr()));
 
     Ok(())
 }

@@ -1,14 +1,11 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::{collections::HashSet, sync::Arc};
 
 use anyhow::{Context, Result};
 use ipnet::Ipv4Net;
 use sysctl::Sysctl;
 
 use crate::{
-    nat::{self, NatRule, NatType},
+    nat::{self, NatRule},
     net::{LanKey, Net, RouterKey},
     network::netns::NamespaceNode,
     runtime::executor::RuntimeConfig,
@@ -25,7 +22,7 @@ pub struct Router {
 #[derive(Debug)]
 pub(crate) struct RouterEntry {
     pub(crate) lans: HashSet<LanKey>,
-    pub(crate) nat_lans: HashMap<LanKey, NatType>,
+    pub(crate) masquerade_lans: HashSet<LanKey>,
     pub(crate) node: Arc<NamespaceNode>,
 }
 
@@ -53,14 +50,14 @@ impl Router {
         Ok(address)
     }
 
-    pub async fn enable_nat(&self, lan: &Lan, nat_type: NatType) -> Result<Ipv4Net> {
+    pub async fn enable_masquerade(&self, lan: &Lan) -> Result<Ipv4Net> {
         self.net.ensure_same(lan.net())?;
 
         let address = self.attach(lan).await?;
-        let rules = self.nat_rules_with(lan.key(), nat_type)?;
+        let rules = self.masquerade_rules_with(lan.key())?;
 
-        self.apply_nat(rules).await?;
-        self.remember_nat_lan(lan.key(), nat_type)?;
+        self.apply_masquerade(rules).await?;
+        self.remember_masquerade_lan(lan.key())?;
 
         Ok(address)
     }
@@ -78,9 +75,9 @@ impl Router {
             .await
     }
 
-    async fn apply_nat(&self, rules: Vec<NatRule>) -> Result<()> {
+    async fn apply_masquerade(&self, rules: Vec<NatRule>) -> Result<()> {
         self.node()
-            .run_blocking(move || nat::apply_nat(rules))
+            .run_blocking(move || nat::apply_masquerade(rules))
             .await
     }
 
@@ -106,26 +103,25 @@ impl Router {
         })
     }
 
-    fn nat_rules_with(&self, lan: LanKey, nat_type: NatType) -> Result<Vec<NatRule>> {
+    fn masquerade_rules_with(&self, lan: LanKey) -> Result<Vec<NatRule>> {
         self.net.with_state(|state| {
             let router = &state.routers[self.key];
-            let mut lans = router.nat_lans.clone();
+            let mut lans = router.masquerade_lans.clone();
 
-            lans.insert(lan, nat_type);
+            lans.insert(lan);
 
             Ok(lans
-                .into_iter()
-                .map(|(lan, nat_type)| NatRule {
-                    network: state.lans[lan].network,
-                    nat_type,
+                .iter()
+                .map(|lan| NatRule {
+                    network: state.lans[*lan].network,
                 })
                 .collect())
         })
     }
 
-    fn remember_nat_lan(&self, lan: LanKey, nat_type: NatType) -> Result<()> {
+    fn remember_masquerade_lan(&self, lan: LanKey) -> Result<()> {
         self.net.with_state_mut(|state| {
-            state.routers[self.key].nat_lans.insert(lan, nat_type);
+            state.routers[self.key].masquerade_lans.insert(lan);
 
             Ok(())
         })
@@ -136,7 +132,7 @@ impl Router {
         let key = net.with_state_mut(|state| {
             Ok(state.routers.insert(RouterEntry {
                 lans: HashSet::new(),
-                nat_lans: HashMap::new(),
+                masquerade_lans: HashSet::new(),
                 node,
             }))
         })?;

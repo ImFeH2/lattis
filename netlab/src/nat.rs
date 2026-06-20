@@ -1,4 +1,9 @@
-use anyhow::{Context, Result};
+use std::{
+    collections::{HashMap, HashSet},
+    net::{Ipv4Addr, SocketAddrV4},
+};
+
+use anyhow::{Context, Result, anyhow};
 use ipnet::Ipv4Net;
 use nftables::{
     batch::Batch,
@@ -9,9 +14,10 @@ use nftables::{
     types::{NfChainPolicy, NfChainType, NfFamily, NfHook},
 };
 
-const NAT_TABLE: &str = "netlab_nat";
+const MASQUERADE_TABLE: &str = "netlab_masquerade";
 const FORWARD_CHAIN: &str = "forward";
 const POSTROUTING_CHAIN: &str = "postrouting";
+const FIRST_DYNAMIC_PORT: u16 = 49152;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NatType {
@@ -24,45 +30,171 @@ pub enum NatType {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct NatRule {
     pub(crate) network: Ipv4Net,
-    pub(crate) nat_type: NatType,
 }
 
-pub(crate) fn apply_nat(rules: Vec<NatRule>) -> Result<()> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UdpTranslation {
+    pub destination: SocketAddrV4,
+    pub source: SocketAddrV4,
+}
+
+#[derive(Debug)]
+pub struct NatTable {
+    mappings: HashMap<NatMappingKey, NatMapping>,
+    nat_type: NatType,
+    next_port: u16,
+    ports: HashMap<u16, NatMappingKey>,
+    public_addr: Ipv4Addr,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+struct NatMappingKey {
+    destination: Option<SocketAddrV4>,
+    source: SocketAddrV4,
+}
+
+#[derive(Debug)]
+struct NatMapping {
+    contacts: HashSet<SocketAddrV4>,
+    public: SocketAddrV4,
+    source: SocketAddrV4,
+}
+
+pub(crate) fn apply_masquerade(rules: Vec<NatRule>) -> Result<()> {
     let ruleset = helper::get_current_ruleset().context("failed to read nftables ruleset")?;
     let mut batch = Batch::new();
 
-    if has_nat_table(&ruleset.objects) {
-        batch.add_cmd(NfCmd::Flush(FlushObject::Table(nat_table())));
-        batch.delete(NfListObject::Table(nat_table()));
+    if has_masquerade_table(&ruleset.objects) {
+        batch.add_cmd(NfCmd::Flush(FlushObject::Table(masquerade_table())));
+        batch.delete(NfListObject::Table(masquerade_table()));
     }
 
-    batch.add(NfListObject::Table(nat_table()));
+    batch.add(NfListObject::Table(masquerade_table()));
     batch.add(NfListObject::Chain(forward_chain()));
     batch.add(NfListObject::Chain(postrouting_chain()));
 
     for rule in rules {
-        if rule.nat_type.blocks_inbound() {
-            batch.add(NfListObject::Rule(established_inbound_rule(rule.network)));
-            batch.add(NfListObject::Rule(private_outbound_rule(rule.network)));
-            batch.add(NfListObject::Rule(new_inbound_drop_rule(rule.network)));
-        }
-
+        batch.add(NfListObject::Rule(established_inbound_rule(rule.network)));
+        batch.add(NfListObject::Rule(private_outbound_rule(rule.network)));
+        batch.add(NfListObject::Rule(new_inbound_drop_rule(rule.network)));
         batch.add(NfListObject::Rule(masquerade_rule(rule.network)));
     }
 
     helper::apply_ruleset(&batch.to_nftables()).context("failed to apply nftables nat rules")
 }
 
-impl NatType {
-    fn blocks_inbound(self) -> bool {
-        !matches!(self, Self::FullCone)
+impl NatTable {
+    pub fn new(public_addr: Ipv4Addr, nat_type: NatType) -> Self {
+        Self {
+            mappings: HashMap::new(),
+            nat_type,
+            next_port: FIRST_DYNAMIC_PORT,
+            ports: HashMap::new(),
+            public_addr,
+        }
+    }
+
+    pub fn translate_inbound(
+        &self,
+        source: SocketAddrV4,
+        destination: SocketAddrV4,
+    ) -> Option<UdpTranslation> {
+        if *destination.ip() != self.public_addr {
+            return None;
+        }
+
+        let key = self.ports.get(&destination.port())?;
+        let mapping = self.mappings.get(key)?;
+
+        if !self.nat_type.allows_inbound(&mapping.contacts, source) {
+            return None;
+        }
+
+        Some(UdpTranslation {
+            destination: mapping.source,
+            source,
+        })
+    }
+
+    pub fn translate_outbound(
+        &mut self,
+        source: SocketAddrV4,
+        destination: SocketAddrV4,
+    ) -> Result<UdpTranslation> {
+        let key = self.nat_type.mapping_key(source, destination);
+
+        if let Some(mapping) = self.mappings.get_mut(&key) {
+            mapping.contacts.insert(destination);
+
+            return Ok(UdpTranslation {
+                destination,
+                source: mapping.public,
+            });
+        }
+
+        let public = SocketAddrV4::new(self.public_addr, self.allocate_port(source.port())?);
+        self.ports.insert(public.port(), key);
+        self.mappings.insert(
+            key,
+            NatMapping {
+                contacts: HashSet::from([destination]),
+                public,
+                source,
+            },
+        );
+
+        Ok(UdpTranslation {
+            destination,
+            source: public,
+        })
+    }
+
+    fn allocate_port(&mut self, preferred: u16) -> Result<u16> {
+        if preferred != 0 && !self.ports.contains_key(&preferred) {
+            return Ok(preferred);
+        }
+
+        for _ in FIRST_DYNAMIC_PORT..=u16::MAX {
+            let port = self.next_port;
+            self.next_port = if self.next_port == u16::MAX {
+                FIRST_DYNAMIC_PORT
+            } else {
+                self.next_port + 1
+            };
+
+            if !self.ports.contains_key(&port) {
+                return Ok(port);
+            }
+        }
+
+        Err(anyhow!("nat port pool is exhausted"))
     }
 }
 
-fn has_nat_table(objects: &[NfObject<'_>]) -> bool {
+impl NatType {
+    fn allows_inbound(self, contacts: &HashSet<SocketAddrV4>, source: SocketAddrV4) -> bool {
+        match self {
+            Self::FullCone => true,
+            Self::RestrictedCone => contacts.iter().any(|contact| contact.ip() == source.ip()),
+            Self::PortRestrictedCone | Self::Symmetric => contacts.contains(&source),
+        }
+    }
+
+    fn mapping_key(self, source: SocketAddrV4, destination: SocketAddrV4) -> NatMappingKey {
+        NatMappingKey {
+            destination: match self {
+                Self::FullCone | Self::RestrictedCone | Self::PortRestrictedCone => None,
+                Self::Symmetric => Some(destination),
+            },
+            source,
+        }
+    }
+}
+
+fn has_masquerade_table(objects: &[NfObject<'_>]) -> bool {
     objects.iter().any(|object| match object {
         NfObject::ListObject(NfListObject::Table(table)) => {
-            table.family == NfFamily::IP && table.name == NAT_TABLE
+            table.family == NfFamily::IP && table.name == MASQUERADE_TABLE
         }
         NfObject::CmdObject(_) => false,
         _ => false,
@@ -72,7 +204,7 @@ fn has_nat_table(objects: &[NfObject<'_>]) -> bool {
 fn established_inbound_rule(network: Ipv4Net) -> Rule<'static> {
     Rule {
         family: NfFamily::IP,
-        table: NAT_TABLE.into(),
+        table: MASQUERADE_TABLE.into(),
         chain: FORWARD_CHAIN.into(),
         expr: vec![
             conntrack_state_match(["established", "related"]),
@@ -87,7 +219,7 @@ fn established_inbound_rule(network: Ipv4Net) -> Rule<'static> {
 fn masquerade_rule(network: Ipv4Net) -> Rule<'static> {
     Rule {
         family: NfFamily::IP,
-        table: NAT_TABLE.into(),
+        table: MASQUERADE_TABLE.into(),
         chain: POSTROUTING_CHAIN.into(),
         expr: vec![source_match(network), Statement::Masquerade(None)].into(),
         ..Default::default()
@@ -97,7 +229,7 @@ fn masquerade_rule(network: Ipv4Net) -> Rule<'static> {
 fn new_inbound_drop_rule(network: Ipv4Net) -> Rule<'static> {
     Rule {
         family: NfFamily::IP,
-        table: NAT_TABLE.into(),
+        table: MASQUERADE_TABLE.into(),
         chain: FORWARD_CHAIN.into(),
         expr: vec![destination_match(network), Statement::Drop(None)].into(),
         ..Default::default()
@@ -107,17 +239,17 @@ fn new_inbound_drop_rule(network: Ipv4Net) -> Rule<'static> {
 fn private_outbound_rule(network: Ipv4Net) -> Rule<'static> {
     Rule {
         family: NfFamily::IP,
-        table: NAT_TABLE.into(),
+        table: MASQUERADE_TABLE.into(),
         chain: FORWARD_CHAIN.into(),
         expr: vec![source_match(network), Statement::Accept(None)].into(),
         ..Default::default()
     }
 }
 
-fn nat_table() -> Table<'static> {
+fn masquerade_table() -> Table<'static> {
     Table {
         family: NfFamily::IP,
-        name: NAT_TABLE.into(),
+        name: MASQUERADE_TABLE.into(),
         handle: None,
     }
 }
@@ -125,7 +257,7 @@ fn nat_table() -> Table<'static> {
 fn forward_chain() -> Chain<'static> {
     Chain {
         family: NfFamily::IP,
-        table: NAT_TABLE.into(),
+        table: MASQUERADE_TABLE.into(),
         name: FORWARD_CHAIN.into(),
         _type: Some(NfChainType::Filter),
         hook: Some(NfHook::Forward),
@@ -138,7 +270,7 @@ fn forward_chain() -> Chain<'static> {
 fn postrouting_chain() -> Chain<'static> {
     Chain {
         family: NfFamily::IP,
-        table: NAT_TABLE.into(),
+        table: MASQUERADE_TABLE.into(),
         name: POSTROUTING_CHAIN.into(),
         _type: Some(NfChainType::NAT),
         hook: Some(NfHook::Postrouting),
@@ -187,4 +319,108 @@ fn address_match(field: &'static str, network: Ipv4Net) -> Statement<'static> {
         })),
         op: Operator::EQ,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PRIVATE_SOURCE: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 2), 5000);
+    const PUBLIC_ADDR: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 10);
+    const REMOTE_ONE: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(198, 51, 100, 1), 3478);
+    const REMOTE_ONE_OTHER_PORT: SocketAddrV4 =
+        SocketAddrV4::new(Ipv4Addr::new(198, 51, 100, 1), 4000);
+    const REMOTE_TWO: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(198, 51, 100, 2), 3478);
+
+    #[test]
+    fn full_cone_keeps_one_mapping_and_accepts_any_remote() -> Result<()> {
+        let mut table = NatTable::new(PUBLIC_ADDR, NatType::FullCone);
+
+        let outbound = table.translate_outbound(PRIVATE_SOURCE, REMOTE_ONE)?;
+        let inbound = table
+            .translate_inbound(REMOTE_TWO, outbound.source)
+            .expect("full cone mapping should accept any remote");
+        let second_outbound = table.translate_outbound(PRIVATE_SOURCE, REMOTE_TWO)?;
+
+        assert_eq!(outbound.source, SocketAddrV4::new(PUBLIC_ADDR, 5000));
+        assert_eq!(inbound.destination, PRIVATE_SOURCE);
+        assert_eq!(second_outbound.source, outbound.source);
+
+        Ok(())
+    }
+
+    #[test]
+    fn restricted_cone_accepts_known_address_from_any_port() -> Result<()> {
+        let mut table = NatTable::new(PUBLIC_ADDR, NatType::RestrictedCone);
+
+        let outbound = table.translate_outbound(PRIVATE_SOURCE, REMOTE_ONE)?;
+
+        assert!(
+            table
+                .translate_inbound(REMOTE_ONE_OTHER_PORT, outbound.source)
+                .is_some()
+        );
+        assert!(
+            table
+                .translate_inbound(REMOTE_TWO, outbound.source)
+                .is_none()
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn port_restricted_cone_requires_known_endpoint() -> Result<()> {
+        let mut table = NatTable::new(PUBLIC_ADDR, NatType::PortRestrictedCone);
+
+        let outbound = table.translate_outbound(PRIVATE_SOURCE, REMOTE_ONE)?;
+
+        assert!(
+            table
+                .translate_inbound(REMOTE_ONE, outbound.source)
+                .is_some()
+        );
+        assert!(
+            table
+                .translate_inbound(REMOTE_ONE_OTHER_PORT, outbound.source)
+                .is_none()
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn symmetric_nat_uses_destination_specific_mappings() -> Result<()> {
+        let mut table = NatTable::new(PUBLIC_ADDR, NatType::Symmetric);
+
+        let first = table.translate_outbound(PRIVATE_SOURCE, REMOTE_ONE)?;
+        let second = table.translate_outbound(PRIVATE_SOURCE, REMOTE_TWO)?;
+
+        assert_eq!(first.source, SocketAddrV4::new(PUBLIC_ADDR, 5000));
+        assert_eq!(
+            second.source,
+            SocketAddrV4::new(PUBLIC_ADDR, FIRST_DYNAMIC_PORT)
+        );
+        assert!(table.translate_inbound(REMOTE_TWO, first.source).is_none());
+        assert!(table.translate_inbound(REMOTE_TWO, second.source).is_some());
+
+        Ok(())
+    }
+
+    #[test]
+    fn port_conflicts_allocate_dynamic_ports() -> Result<()> {
+        let mut table = NatTable::new(PUBLIC_ADDR, NatType::FullCone);
+        let other_private_source = SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 3), 5000);
+
+        let first = table.translate_outbound(PRIVATE_SOURCE, REMOTE_ONE)?;
+        let second = table.translate_outbound(other_private_source, REMOTE_ONE)?;
+
+        assert_eq!(first.source, SocketAddrV4::new(PUBLIC_ADDR, 5000));
+        assert_eq!(
+            second.source,
+            SocketAddrV4::new(PUBLIC_ADDR, FIRST_DYNAMIC_PORT)
+        );
+
+        Ok(())
+    }
 }
