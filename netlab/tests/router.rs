@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use netlab::{Host, Net};
+use netlab::{Host, NatType, Net};
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::oneshot,
@@ -79,8 +79,8 @@ async fn router_nat_masks_private_source_and_blocks_inbound_connections() -> Res
     let external_host = net.host().await?;
 
     private_lan.set_gateway(&router).await?;
-    router.enable_nat(&private_lan).await?;
-    router.enable_nat(&private_lan).await?;
+    router.enable_nat(&private_lan, NatType::Symmetric).await?;
+    router.enable_nat(&private_lan, NatType::Symmetric).await?;
     let router_external_addr = router.attach(&external_lan).await?;
     external_lan.set_gateway(&router).await?;
 
@@ -96,6 +96,30 @@ async fn router_nat_masks_private_source_and_blocks_inbound_connections() -> Res
         .assert_can_reach(&private_host, private_addr.addr())
         .await;
     assert!(inbound_result.is_err());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn router_full_cone_nat_allows_inbound_connections() -> Result<()> {
+    let net = Net::new();
+    let router = net.router().await?;
+    let private_lan = net.lan("10.35.1.0/24".parse()?).await?;
+    let external_lan = net.lan("10.35.2.0/24".parse()?).await?;
+    let private_host = net.host().await?;
+    let external_host = net.host().await?;
+
+    private_lan.set_gateway(&router).await?;
+    router.enable_nat(&private_lan, NatType::FullCone).await?;
+    router.attach(&external_lan).await?;
+    external_lan.set_gateway(&router).await?;
+
+    let private_addr = private_host.join(&private_lan).await?;
+    external_host.join(&external_lan).await?;
+
+    external_host
+        .assert_can_reach(&private_host, private_addr.addr())
+        .await?;
 
     Ok(())
 }

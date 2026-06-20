@@ -13,7 +13,21 @@ const NAT_TABLE: &str = "netlab_nat";
 const FORWARD_CHAIN: &str = "forward";
 const POSTROUTING_CHAIN: &str = "postrouting";
 
-pub(crate) fn apply_nat(networks: Vec<Ipv4Net>) -> Result<()> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NatType {
+    FullCone,
+    RestrictedCone,
+    PortRestrictedCone,
+    Symmetric,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct NatRule {
+    pub(crate) network: Ipv4Net,
+    pub(crate) nat_type: NatType,
+}
+
+pub(crate) fn apply_nat(rules: Vec<NatRule>) -> Result<()> {
     let ruleset = helper::get_current_ruleset().context("failed to read nftables ruleset")?;
     let mut batch = Batch::new();
 
@@ -26,14 +40,23 @@ pub(crate) fn apply_nat(networks: Vec<Ipv4Net>) -> Result<()> {
     batch.add(NfListObject::Chain(forward_chain()));
     batch.add(NfListObject::Chain(postrouting_chain()));
 
-    for network in networks {
-        batch.add(NfListObject::Rule(established_inbound_rule(network)));
-        batch.add(NfListObject::Rule(private_outbound_rule(network)));
-        batch.add(NfListObject::Rule(new_inbound_drop_rule(network)));
-        batch.add(NfListObject::Rule(masquerade_rule(network)));
+    for rule in rules {
+        if rule.nat_type.blocks_inbound() {
+            batch.add(NfListObject::Rule(established_inbound_rule(rule.network)));
+            batch.add(NfListObject::Rule(private_outbound_rule(rule.network)));
+            batch.add(NfListObject::Rule(new_inbound_drop_rule(rule.network)));
+        }
+
+        batch.add(NfListObject::Rule(masquerade_rule(rule.network)));
     }
 
     helper::apply_ruleset(&batch.to_nftables()).context("failed to apply nftables nat rules")
+}
+
+impl NatType {
+    fn blocks_inbound(self) -> bool {
+        !matches!(self, Self::FullCone)
+    }
 }
 
 fn has_nat_table(objects: &[NfObject<'_>]) -> bool {

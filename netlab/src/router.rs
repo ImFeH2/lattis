@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use anyhow::{Context, Result};
 use ipnet::Ipv4Net;
@@ -7,7 +7,7 @@ use sysctl::Sysctl;
 use crate::{
     executor::RuntimeConfig,
     lan::Lan,
-    nat,
+    nat::{self, NatRule, NatType},
     net::{LanKey, Net, RouterKey},
     node::Node,
 };
@@ -22,7 +22,7 @@ pub struct Router {
 #[derive(Debug)]
 pub(crate) struct RouterEntry {
     pub(crate) lans: Vec<LanKey>,
-    pub(crate) nat_lans: HashSet<LanKey>,
+    pub(crate) nat_lans: HashMap<LanKey, NatType>,
     pub(crate) node: Arc<Node>,
 }
 
@@ -50,14 +50,14 @@ impl Router {
         Ok(address)
     }
 
-    pub async fn enable_nat(&self, lan: &Lan) -> Result<Ipv4Net> {
+    pub async fn enable_nat(&self, lan: &Lan, nat_type: NatType) -> Result<Ipv4Net> {
         self.net.ensure_same(lan.net())?;
 
         let address = self.attach(lan).await?;
-        let networks = self.nat_networks_with(lan.key())?;
+        let rules = self.nat_rules_with(lan.key(), nat_type)?;
 
-        self.apply_nat(networks).await?;
-        self.remember_nat_lan(lan.key())?;
+        self.apply_nat(rules).await?;
+        self.remember_nat_lan(lan.key(), nat_type)?;
 
         Ok(address)
     }
@@ -75,9 +75,9 @@ impl Router {
             .await
     }
 
-    async fn apply_nat(&self, networks: Vec<Ipv4Net>) -> Result<()> {
+    async fn apply_nat(&self, rules: Vec<NatRule>) -> Result<()> {
         self.node()
-            .run_blocking(move || nat::apply_nat(networks))
+            .run_blocking(move || nat::apply_nat(rules))
             .await
     }
 
@@ -103,25 +103,26 @@ impl Router {
         })
     }
 
-    fn nat_networks_with(&self, lan: LanKey) -> Result<Vec<Ipv4Net>> {
+    fn nat_rules_with(&self, lan: LanKey, nat_type: NatType) -> Result<Vec<NatRule>> {
         self.net.with_state(|state| {
             let router = &state.routers[self.key];
-            let mut lans = router.nat_lans.iter().copied().collect::<Vec<_>>();
+            let mut lans = router.nat_lans.clone();
 
-            if !lans.contains(&lan) {
-                lans.push(lan);
-            }
+            lans.insert(lan, nat_type);
 
             Ok(lans
                 .into_iter()
-                .map(|lan| state.lans[lan].network)
+                .map(|(lan, nat_type)| NatRule {
+                    network: state.lans[lan].network,
+                    nat_type,
+                })
                 .collect())
         })
     }
 
-    fn remember_nat_lan(&self, lan: LanKey) -> Result<()> {
+    fn remember_nat_lan(&self, lan: LanKey, nat_type: NatType) -> Result<()> {
         self.net.with_state_mut(|state| {
-            state.routers[self.key].nat_lans.insert(lan);
+            state.routers[self.key].nat_lans.insert(lan, nat_type);
 
             Ok(())
         })
@@ -132,7 +133,7 @@ impl Router {
         let key = net.with_state_mut(|state| {
             Ok(state.routers.insert(RouterEntry {
                 lans: Vec::new(),
-                nat_lans: HashSet::new(),
+                nat_lans: HashMap::new(),
                 node,
             }))
         })?;
