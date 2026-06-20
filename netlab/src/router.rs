@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use anyhow::{Context, Result};
 use ipnet::Ipv4Net;
@@ -21,7 +24,7 @@ pub struct Router {
 
 #[derive(Debug)]
 pub(crate) struct RouterEntry {
-    pub(crate) lans: Vec<LanKey>,
+    pub(crate) lans: HashSet<LanKey>,
     pub(crate) nat_lans: HashMap<LanKey, NatType>,
     pub(crate) node: Arc<Node>,
 }
@@ -97,7 +100,7 @@ impl Router {
 
     fn remember_lan(&self, lan: LanKey) -> Result<()> {
         self.net.with_state_mut(|state| {
-            state.routers[self.key].lans.push(lan);
+            state.routers[self.key].lans.insert(lan);
 
             Ok(())
         })
@@ -132,7 +135,7 @@ impl Router {
         let node = Node::new(name, runtime).await?;
         let key = net.with_state_mut(|state| {
             Ok(state.routers.insert(RouterEntry {
-                lans: Vec::new(),
+                lans: HashSet::new(),
                 nat_lans: HashMap::new(),
                 node,
             }))
