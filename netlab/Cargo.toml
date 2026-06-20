@@ -44,6 +44,11 @@ path = "tests/lan.rs"
 required-features = ["netlab-tests"]
 
 [[test]]
+name = "nat"
+path = "tests/nat.rs"
+required-features = ["netlab-tests"]
+
+[[test]]
 name = "router"
 path = "tests/router.rs"
 required-features = ["netlab-tests"]
