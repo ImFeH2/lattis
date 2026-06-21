@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use boringtun::noise::{Packet, Tunn, TunnResult};
 use std::{
-    net::{IpAddr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::Arc,
 };
 use tokio::net::UdpSocket;
@@ -14,53 +14,212 @@ pub(super) const WIREGUARD_PACKET_BUFFER_SIZE: usize = MTU + WIREGUARD_OVERHEAD;
 const WIREGUARD_HANDSHAKE_RESPONSE: u32 = 2;
 const WIREGUARD_HANDSHAKE_RESPONSE_SIZE: usize = 92;
 
-pub(super) enum EndpointUpdate {
-    None,
-    VerifiedPacket,
-    HandshakeResponse,
+pub(super) struct WireGuardIo {
+    packet_device: Arc<dyn PacketDevice>,
+    socket: Arc<UdpSocket>,
 }
 
-pub(super) async fn handle_peer_datagram(
-    peer: Arc<Peer>,
-    raw_packet: &[u8],
-    src: SocketAddr,
-    packet_device: &dyn PacketDevice,
-    socket: &UdpSocket,
-    endpoint_update: EndpointUpdate,
-    log_errors: bool,
-) -> Result<bool> {
-    let mut out_buf = [0u8; WIREGUARD_PACKET_BUFFER_SIZE];
+pub(super) enum EndpointUpdate {
+    VerifiedPacket,
+    GeneratedHandshakeResponse,
+}
 
-    let result = {
-        let mut tunnel = peer
-            .tunnel
-            .lock()
-            .map_err(|_| anyhow!("WireGuard tunnel mutex error"))?;
+impl WireGuardIo {
+    pub(super) async fn bind(
+        listen_port: u16,
+        packet_device: Arc<dyn PacketDevice>,
+    ) -> Result<Self> {
+        let socket_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), listen_port);
+        let socket = UdpSocket::bind(&socket_address).await?;
 
-        tunnel.decapsulate(Some(src.ip()), raw_packet, &mut out_buf)
-    };
+        Ok(Self {
+            packet_device,
+            socket: Arc::new(socket),
+        })
+    }
 
-    if let TunnResult::Err(err) = &result {
-        if log_errors {
-            eprintln!("WireGuard inbound error from {}: {:?}", src, err);
+    pub(super) async fn recv_datagram(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {
+        Ok(self.socket.recv_from(buf).await?)
+    }
+
+    pub(super) async fn recv_packet(&self, buf: &mut [u8]) -> Result<usize> {
+        Ok(self.packet_device.recv(buf).await?)
+    }
+
+    pub(super) async fn encapsulate_packet(
+        &self,
+        peer: Arc<Peer>,
+        raw_packet: &[u8],
+    ) -> Result<()> {
+        let mut out_buf = [0u8; WIREGUARD_PACKET_BUFFER_SIZE];
+
+        let result = {
+            let mut tunnel = peer
+                .tunnel
+                .lock()
+                .map_err(|_| anyhow!("WireGuard tunnel mutex error"))?;
+
+            tunnel.encapsulate(raw_packet, &mut out_buf)
+        };
+        let endpoint = peer.selected_endpoint()?;
+
+        self.handle_tunn_result(&peer, result, endpoint, "outbound")
+            .await
+    }
+
+    pub(super) async fn decapsulate_datagram(
+        &self,
+        peer: Arc<Peer>,
+        raw_packet: &[u8],
+        src: SocketAddr,
+        endpoint_update: EndpointUpdate,
+        log_errors: bool,
+    ) -> Result<bool> {
+        let mut out_buf = [0u8; WIREGUARD_PACKET_BUFFER_SIZE];
+
+        let result = {
+            let mut tunnel = peer
+                .tunnel
+                .lock()
+                .map_err(|_| anyhow!("WireGuard tunnel mutex error"))?;
+
+            tunnel.decapsulate(Some(src.ip()), raw_packet, &mut out_buf)
+        };
+
+        if let TunnResult::Err(err) = &result {
+            if log_errors {
+                eprintln!("WireGuard inbound error from {}: {:?}", src, err);
+            }
+            return Ok(false);
         }
-        return Ok(false);
+
+        let should_confirm_endpoint = match endpoint_update {
+            EndpointUpdate::VerifiedPacket => true,
+            EndpointUpdate::GeneratedHandshakeResponse => is_wireguard_handshake_response(&result),
+        };
+        let endpoint_confirmed = should_confirm_endpoint && peer.confirm_endpoint(src)?;
+
+        self.handle_tunn_result(&peer, result, src, "inbound")
+            .await?;
+        self.drain_peer(peer.clone(), src).await?;
+
+        if should_confirm_endpoint && !endpoint_confirmed {
+            self.probe_endpoint(&peer, src).await?;
+        }
+
+        Ok(true)
     }
 
-    let update_endpoint = match endpoint_update {
-        EndpointUpdate::None => false,
-        EndpointUpdate::VerifiedPacket => true,
-        EndpointUpdate::HandshakeResponse => is_wireguard_handshake_response(&result),
-    };
+    pub(super) async fn probe_endpoint(&self, peer: &Peer, endpoint: SocketAddr) -> Result<()> {
+        let mut out_buf = [0u8; WIREGUARD_PACKET_BUFFER_SIZE];
 
-    if update_endpoint {
-        peer.update_endpoint(src)?;
+        let result = {
+            let mut tunnel = peer
+                .tunnel
+                .lock()
+                .map_err(|_| anyhow!("WireGuard tunnel mutex error"))?;
+
+            tunnel.format_handshake_initiation(&mut out_buf, true)
+        };
+
+        match result {
+            TunnResult::WriteToNetwork(packet) => {
+                self.socket.send_to(packet, endpoint).await?;
+                peer.record_endpoint_probe(endpoint)?;
+            }
+            TunnResult::Done => {}
+            TunnResult::Err(err) => {
+                return Err(anyhow!("WireGuard handshake probe error: {:?}", err));
+            }
+            TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
+                return Err(anyhow!("Unexpected handshake probe output type"));
+            }
+        }
+
+        Ok(())
     }
 
-    handle_tunn_result(&peer, result, packet_device, socket, src, "inbound").await?;
-    drain_peer(peer, packet_device, socket, src).await?;
+    pub(super) async fn update_timers(&self, peer: Arc<Peer>) -> Result<()> {
+        let mut out_buf = [0u8; WIREGUARD_PACKET_BUFFER_SIZE];
 
-    Ok(true)
+        let result = {
+            let mut tunnel = peer
+                .tunnel
+                .lock()
+                .map_err(|_| anyhow!("WireGuard tunnel mutex error"))?;
+
+            tunnel.update_timers(&mut out_buf)
+        };
+        let endpoint = peer.selected_endpoint()?;
+
+        self.handle_tunn_result(&peer, result, endpoint, "timer")
+            .await
+    }
+
+    async fn drain_peer(&self, peer: Arc<Peer>, endpoint: SocketAddr) -> Result<()> {
+        loop {
+            let mut out_buf = [0u8; WIREGUARD_PACKET_BUFFER_SIZE];
+            let result = {
+                let mut tunnel = peer
+                    .tunnel
+                    .lock()
+                    .map_err(|_| anyhow!("WireGuard tunnel mutex error"))?;
+
+                tunnel.decapsulate(None, &[], &mut out_buf)
+            };
+
+            let done = matches!(result, TunnResult::Done | TunnResult::Err(_));
+            self.handle_tunn_result(&peer, result, endpoint, "drain")
+                .await?;
+
+            if done {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn handle_tunn_result(
+        &self,
+        peer: &Peer,
+        result: TunnResult<'_>,
+        endpoint: SocketAddr,
+        context: &str,
+    ) -> Result<()> {
+        match result {
+            TunnResult::WriteToNetwork(packet) => {
+                self.socket.send_to(packet, endpoint).await?;
+            }
+            TunnResult::WriteToTunnelV4(packet, source) => {
+                self.send_tunnel_packet(peer, packet, IpAddr::V4(source))
+                    .await?;
+            }
+            TunnResult::WriteToTunnelV6(packet, source) => {
+                self.send_tunnel_packet(peer, packet, IpAddr::V6(source))
+                    .await?;
+            }
+            TunnResult::Done => {}
+            TunnResult::Err(err) => {
+                eprintln!("WireGuard {} error from {}: {:?}", context, endpoint, err);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn send_tunnel_packet(&self, peer: &Peer, packet: &[u8], source: IpAddr) -> Result<()> {
+        if peer.has_address(source)? {
+            self.packet_device.send(packet).await?;
+        } else {
+            eprintln!(
+                "Dropped WireGuard packet from unauthorized source {}",
+                source
+            );
+        }
+
+        Ok(())
+    }
 }
 
 pub(super) fn packet_receiver_index(raw_packet: &[u8]) -> Option<u32> {
@@ -72,77 +231,6 @@ pub(super) fn packet_receiver_index(raw_packet: &[u8]) -> Option<u32> {
         Packet::PacketCookieReply(packet) => Some(packet.receiver_idx),
         Packet::PacketData(packet) => Some(packet.receiver_idx),
     }
-}
-
-async fn drain_peer(
-    peer: Arc<Peer>,
-    packet_device: &dyn PacketDevice,
-    socket: &UdpSocket,
-    endpoint: SocketAddr,
-) -> Result<()> {
-    loop {
-        let mut out_buf = [0u8; WIREGUARD_PACKET_BUFFER_SIZE];
-        let result = {
-            let mut tunnel = peer
-                .tunnel
-                .lock()
-                .map_err(|_| anyhow!("WireGuard tunnel mutex error"))?;
-
-            tunnel.decapsulate(None, &[], &mut out_buf)
-        };
-
-        let done = matches!(result, TunnResult::Done | TunnResult::Err(_));
-        handle_tunn_result(&peer, result, packet_device, socket, endpoint, "drain").await?;
-
-        if done {
-            break;
-        }
-    }
-
-    Ok(())
-}
-
-async fn handle_tunn_result(
-    peer: &Peer,
-    result: TunnResult<'_>,
-    packet_device: &dyn PacketDevice,
-    socket: &UdpSocket,
-    endpoint: SocketAddr,
-    context: &str,
-) -> Result<()> {
-    match result {
-        TunnResult::WriteToNetwork(packet) => {
-            socket.send_to(packet, endpoint).await?;
-        }
-        TunnResult::WriteToTunnelV4(packet, source) => {
-            let source = IpAddr::V4(source);
-            if peer.has_address(source)? {
-                packet_device.send(packet).await?;
-            } else {
-                eprintln!(
-                    "Dropped WireGuard packet from unauthorized source {}",
-                    source
-                );
-            }
-        }
-        TunnResult::WriteToTunnelV6(packet, source) => {
-            let source = IpAddr::V6(source);
-            if peer.has_address(source)? {
-                packet_device.send(packet).await?;
-            } else {
-                eprintln!(
-                    "Dropped WireGuard packet from unauthorized source {}",
-                    source
-                );
-            }
-        }
-        TunnResult::Done => {}
-        TunnResult::Err(err) => {
-            eprintln!("WireGuard {} error from {}: {:?}", context, endpoint, err);
-        }
-    }
-
-    Ok(())
 }
 
 fn is_wireguard_handshake_response(result: &TunnResult<'_>) -> bool {

@@ -1,12 +1,8 @@
-use anyhow::{Result, anyhow};
-use boringtun::{noise::TunnResult, x25519::StaticSecret};
+use anyhow::{Context, Result};
+use boringtun::x25519::StaticSecret;
 use etherparse::IpSlice;
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::Arc,
-};
+use std::{net::SocketAddr, sync::Arc};
 use tokio::{
-    net::UdpSocket,
     task::JoinHandle,
     time::{Duration, interval},
 };
@@ -18,11 +14,10 @@ use super::{
     route::{RouteGuard, add_lattis_network_route},
     tun::open_tun_device,
     wireguard::{
-        EndpointUpdate, MTU, WIREGUARD_PACKET_BUFFER_SIZE, handle_peer_datagram,
-        packet_receiver_index,
+        EndpointUpdate, MTU, WIREGUARD_PACKET_BUFFER_SIZE, WireGuardIo, packet_receiver_index,
     },
 };
-use crate::model::{DeviceInfo, RegisterDeviceRequest};
+use crate::model::{DeviceID, DeviceInfo, RegisterDeviceRequest};
 
 const WIREGUARD_TIMER_INTERVAL: Duration = Duration::from_millis(250);
 
@@ -30,6 +25,7 @@ pub struct Device {
     _route: RouteGuard,
     info: DeviceInfo,
     peers: Arc<PeerTable>,
+    wireguard: Arc<WireGuardIo>,
     peer_events: JoinHandle<Result<()>>,
     outbound: JoinHandle<Result<()>>,
     inbound: JoinHandle<Result<()>>,
@@ -37,6 +33,7 @@ pub struct Device {
 }
 
 struct DeviceTasks {
+    wireguard: Arc<WireGuardIo>,
     peer_events: JoinHandle<Result<()>>,
     outbound: JoinHandle<Result<()>>,
     inbound: JoinHandle<Result<()>>,
@@ -88,6 +85,30 @@ impl Device {
         self.peers.all_infos()
     }
 
+    pub async fn probe_peer(&self, device_id: &DeviceID) -> Result<()> {
+        let peer = self
+            .peers
+            .find_by_device_id(device_id)?
+            .context("Peer not found")?;
+
+        self.wireguard
+            .probe_endpoint(&peer, peer.selected_endpoint()?)
+            .await
+    }
+
+    pub async fn probe_peer_endpoint(
+        &self,
+        device_id: &DeviceID,
+        endpoint: SocketAddr,
+    ) -> Result<()> {
+        let peer = self
+            .peers
+            .find_by_device_id(device_id)?
+            .context("Peer not found")?;
+
+        self.wireguard.probe_endpoint(&peer, endpoint).await
+    }
+
     fn from_runtime(
         info: DeviceInfo,
         peers: Arc<PeerTable>,
@@ -98,6 +119,7 @@ impl Device {
             _route: route,
             info,
             peers,
+            wireguard: tasks.wireguard,
             peer_events: tasks.peer_events,
             outbound: tasks.outbound,
             inbound: tasks.inbound,
@@ -111,13 +133,12 @@ impl Device {
         mut peer_events: super::coordinator::PeerEventStream,
         packet_device: Arc<dyn PacketDevice>,
     ) -> Result<DeviceTasks> {
-        let socket_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), listen_port);
-        let socket = UdpSocket::bind(&socket_address).await?;
-
-        let socket = Arc::new(socket);
+        let wireguard = Arc::new(WireGuardIo::bind(listen_port, packet_device).await?);
+        probe_peer_endpoints(&peers, &wireguard).await?;
 
         let peer_events = {
             let peers = peers.clone();
+            let wireguard = wireguard.clone();
 
             tokio::spawn(async move {
                 while let Some(event) = peer_events.next().await? {
@@ -125,6 +146,7 @@ impl Device {
                         PeerEvent::Peer(peer) => peers.upsert(peer)?,
                         PeerEvent::Peers(peer_list) => peers.replace(peer_list)?,
                     }
+                    probe_peer_endpoints(&peers, &wireguard).await?;
                 }
 
                 Ok(())
@@ -132,104 +154,73 @@ impl Device {
         };
 
         let outbound = {
-            let packet_device = packet_device.clone();
-            let socket = socket.clone();
+            let wireguard = wireguard.clone();
             let peers = peers.clone();
 
             tokio::spawn(async move {
                 let mut buf = [0u8; MTU];
                 loop {
-                    let len = packet_device.recv(&mut buf).await?;
+                    let len = wireguard.recv_packet(&mut buf).await?;
                     let raw_packet = &buf[..len];
                     let ip_packet = IpSlice::from_slice(raw_packet)?;
                     let dst = ip_packet.destination_addr();
 
-                    let peer = peers.find_by_destination(dst)?;
-
-                    if let Some(peer) = peer {
-                        let mut out_buf = [0u8; WIREGUARD_PACKET_BUFFER_SIZE];
-
-                        let result = {
-                            let mut tunnel = peer
-                                .tunnel
-                                .lock()
-                                .map_err(|_| anyhow!("WireGuard tunnel mutex error"))?;
-
-                            tunnel.encapsulate(raw_packet, &mut out_buf)
-                        };
-
-                        match result {
-                            TunnResult::WriteToNetwork(packet) => {
-                                let endpoint = peer.endpoint()?;
-                                socket.send_to(packet, endpoint).await?;
-                            }
-                            TunnResult::Done => {}
-                            TunnResult::Err(err) => {
-                                eprintln!("WireGuard outbound error: {:?}", err);
-                            }
-                            TunnResult::WriteToTunnelV4(_, _)
-                            | TunnResult::WriteToTunnelV6(_, _) => {
-                                eprintln!("Unexpected tunnel output type");
-                            }
-                        }
+                    if let Some(peer) = peers.find_by_destination(dst)? {
+                        wireguard.encapsulate_packet(peer, raw_packet).await?;
                     }
                 }
             })
         };
 
         let inbound = {
-            let packet_device = packet_device.clone();
-            let socket = socket.clone();
+            let wireguard = wireguard.clone();
             let peers = peers.clone();
 
             tokio::spawn(async move {
                 let mut buf = [0u8; WIREGUARD_PACKET_BUFFER_SIZE];
                 loop {
-                    let (len, src) = socket.recv_from(&mut buf).await?;
+                    let (len, src) = wireguard.recv_datagram(&mut buf).await?;
                     let raw_packet = &buf[..len];
 
                     if let Some(peer) = peers.find_by_endpoint(src)? {
-                        handle_peer_datagram(
-                            peer,
-                            raw_packet,
-                            src,
-                            packet_device.as_ref(),
-                            &socket,
-                            EndpointUpdate::None,
-                            true,
-                        )
-                        .await?;
+                        wireguard
+                            .decapsulate_datagram(
+                                peer,
+                                raw_packet,
+                                src,
+                                EndpointUpdate::VerifiedPacket,
+                                true,
+                            )
+                            .await?;
                         continue;
                     }
 
                     if let Some(index) = packet_receiver_index(raw_packet)
                         && let Some(peer) = peers.find_by_index(index >> 8)?
                     {
-                        handle_peer_datagram(
-                            peer,
-                            raw_packet,
-                            src,
-                            packet_device.as_ref(),
-                            &socket,
-                            EndpointUpdate::VerifiedPacket,
-                            true,
-                        )
-                        .await?;
+                        wireguard
+                            .decapsulate_datagram(
+                                peer,
+                                raw_packet,
+                                src,
+                                EndpointUpdate::VerifiedPacket,
+                                true,
+                            )
+                            .await?;
                         continue;
                     }
 
                     let mut handled = false;
                     for peer in peers.all()? {
-                        if handle_peer_datagram(
-                            peer,
-                            raw_packet,
-                            src,
-                            packet_device.as_ref(),
-                            &socket,
-                            EndpointUpdate::HandshakeResponse,
-                            false,
-                        )
-                        .await?
+                        if wireguard
+                            .decapsulate_datagram(
+                                peer,
+                                raw_packet,
+                                src,
+                                EndpointUpdate::GeneratedHandshakeResponse,
+                                false,
+                            )
+                            .await?
                         {
                             handled = true;
                             break;
@@ -244,7 +235,7 @@ impl Device {
         };
 
         let timer = {
-            let socket = socket.clone();
+            let wireguard = wireguard.clone();
             let peers = peers.clone();
 
             tokio::spawn(async move {
@@ -254,43 +245,30 @@ impl Device {
                     interval.tick().await;
 
                     for peer in peers.all()? {
-                        let mut out_buf = [0u8; WIREGUARD_PACKET_BUFFER_SIZE];
-
-                        let result = {
-                            let mut tunnel = peer
-                                .tunnel
-                                .lock()
-                                .map_err(|_| anyhow!("WireGuard tunnel mutex error"))?;
-
-                            tunnel.update_timers(&mut out_buf)
-                        };
-
-                        match result {
-                            TunnResult::WriteToNetwork(packet) => {
-                                let endpoint = peer.endpoint()?;
-                                socket.send_to(packet, endpoint).await?;
-                            }
-                            TunnResult::Done => {}
-                            TunnResult::Err(err) => {
-                                eprintln!("WireGuard timer error: {:?}", err);
-                            }
-                            TunnResult::WriteToTunnelV4(_, _)
-                            | TunnResult::WriteToTunnelV6(_, _) => {
-                                eprintln!("Unexpected timer output type");
-                            }
-                        }
+                        wireguard.update_timers(peer).await?;
                     }
                 }
             })
         };
 
         Ok(DeviceTasks {
+            wireguard,
             peer_events,
             outbound,
             inbound,
             timer,
         })
     }
+}
+
+async fn probe_peer_endpoints(peers: &PeerTable, wireguard: &WireGuardIo) -> Result<()> {
+    for peer in peers.all()? {
+        for endpoint in peer.endpoints_to_probe()? {
+            wireguard.probe_endpoint(&peer, endpoint).await?;
+        }
+    }
+
+    Ok(())
 }
 
 impl Drop for Device {
