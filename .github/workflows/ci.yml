@@ -70,17 +70,17 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check Rust formatting
-        run: cargo fmt --all --check
-
       - name: Check frontend
-        run: pnpm --dir ui run check
+        run: pnpm check:web
 
-      - name: Lint Rust
-        run: cargo clippy --workspace --exclude netlab --all-targets --locked -- -D warnings
+      - name: Test frontend
+        run: pnpm test:web
+
+      - name: Check Rust
+        run: pnpm check:rust
 
       - name: Test Rust
-        run: cargo test --workspace --exclude netlab --locked
+        run: pnpm test:rust
 
       - name: Build CLI
         run: cargo build -p lattis-cli --bin lattis --locked
