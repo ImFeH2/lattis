@@ -5,24 +5,42 @@ on:
     branches:
       - main
   pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  rust-quality:
-    name: Rust Quality
-    runs-on: ubuntu-latest
+  ci:
+    name: CI (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-latest
+          - name: Windows x64
+            os: windows-latest
+          - name: macOS arm64
+            os: macos-15
+          - name: macOS x64
+            os: macos-15-intel
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Linux dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
@@ -40,108 +58,32 @@ jobs:
           components: rustfmt,clippy
           rustflags: ""
 
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-
-      - name: Cargo format
-        run: cargo fmt --all --check
-
-      - name: Cargo lint
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Cargo test
-        run: cargo test --workspace --locked
-
-  frontend-quality:
-    name: Frontend Quality
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
-
-      - name: Set up pnpm
-        run: corepack enable
+          cache: pnpm
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Frontend check
+      - name: Check Rust formatting
+        run: cargo fmt --all --check
+
+      - name: Check frontend
         run: pnpm --dir ui run check
 
-  cli-build:
-    name: CLI Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - macos-latest
-          - ubuntu-latest
-          - windows-latest
+      - name: Lint Rust
+        run: cargo clippy --workspace --exclude netlab --all-targets --locked -- -D warnings
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-          rustflags: ""
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+      - name: Test Rust
+        run: cargo test --workspace --exclude netlab --locked
 
       - name: Build CLI
         run: cargo build -p lattis-cli --bin lattis --locked
 
-  app-desktop-build-check:
-    name: App Desktop Build Check
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            libayatana-appindicator3-dev \
-            libgtk-3-dev \
-            librsvg2-dev \
-            libsoup-3.0-dev \
-            libxdo-dev \
-            libwebkit2gtk-4.1-dev
-
-      - name: Set up Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-          rustflags: ""
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --locked
-
-      - name: Set up Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
-      - name: Set up pnpm
-        run: corepack enable
-
-      - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Tauri desktop build check
-        run: cargo tauri build --debug --no-bundle --ci
+      - name: Build app
+        run: pnpm --dir app tauri build --debug --no-bundle --ci

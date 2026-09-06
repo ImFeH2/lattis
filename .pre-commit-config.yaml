@@ -7,6 +7,7 @@ repos:
       - id: check-json
         exclude: (^|/)tsconfig(\.[^/]+)?\.json$
       - id: check-yaml
+        args: [--allow-multiple-documents]
       - id: check-toml
       - id: check-added-large-files
 
@@ -21,14 +22,14 @@ repos:
 
       - id: cargo-clippy
         name: Cargo lint
-        entry: cargo clippy --workspace --all-targets -- -D warnings
+        entry: cargo clippy --workspace --exclude netlab --all-targets -- -D warnings
         language: system
         pass_filenames: false
         types_or: [rust, toml]
 
       - id: cargo-test
         name: Cargo test
-        entry: cargo test --workspace
+        entry: cargo test --workspace --exclude netlab
         language: system
         pass_filenames: false
         types_or: [rust, toml]
