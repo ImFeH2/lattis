@@ -171,6 +171,8 @@ mod tests {
     fn interface(ip: IpAddr, oper_status: IfOperStatus, is_p2p: bool) -> Interface {
         Interface {
             name: "eth0".to_string(),
+            #[cfg(windows)]
+            adapter_name: "eth0".to_string(),
             addr: match ip {
                 IpAddr::V4(ip) => IfAddr::V4(Ifv4Addr {
                     ip,
