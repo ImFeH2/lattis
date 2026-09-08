@@ -1,15 +1,13 @@
 allow-branch = ["main"]
 shared-version = true
-dependent-version = "upgrade"
-metadata = "optional"
-
 consolidate-commits = true
+
 pre-release-commit-message = "chore: release {{version}}"
 pre-release-replacements = [
-  { file = "package.json", search = '"version": "[^"]+"', replace = '"version": "{{version}}"' },
-  { file = "app/package.json", search = '"version": "[^"]+"', replace = '"version": "{{version}}"' },
-  { file = "web/package.json", search = '"version": "[^"]+"', replace = '"version": "{{version}}"' },
-  { file = "app/tauri.conf.json", search = '"version": "[^"]+"', replace = '"version": "{{version}}"' },
+  { file = "package.json", search = '"version": "[^"]+"', replace = '"version": "{{version}}"', exactly = 1 },
+  { file = "app/package.json", search = '"version": "[^"]+"', replace = '"version": "{{version}}"', exactly = 1 },
+  { file = "web/package.json", search = '"version": "[^"]+"', replace = '"version": "{{version}}"', exactly = 1 },
+  { file = "app/tauri.conf.json", search = '"version": "[^"]+"', replace = '"version": "{{version}}"', exactly = 1 },
 ]
 
 tag-name = "v{{version}}"
@@ -18,7 +16,3 @@ sign-commit = true
 sign-tag = true
 
 publish = false
-verify = false
-
-push = true
-push-remote = "origin"
