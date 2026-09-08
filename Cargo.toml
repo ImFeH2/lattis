@@ -4,13 +4,13 @@ members = ["app", "cli", "core", "netlab"]
 
 [workspace.package]
 version = "0.0.1"
-edition = "2024"
 authors = ["ImFeH2 <i@feh2.im>"]
+edition = "2024"
 description = "A connected space where your devices can work together."
-license = "Apache-2.0"
-repository = "https://github.com/ImFeH2/lattis"
 readme = "README.md"
+repository = "https://github.com/ImFeH2/lattis"
+license = "Apache-2.0"
 
 [workspace.dependencies]
-lattis-core = { version = "0.0.1", path = "core" }
-netlab = { version = "0.0.1", path = "netlab" }
+lattis-core = { path = "core", version = "0.0.1" }
+netlab = { path = "netlab", version = "0.0.1" }

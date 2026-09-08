@@ -1,37 +1,12 @@
 [package]
 name = "netlab"
 version.workspace = true
-edition.workspace = true
 authors.workspace = true
+edition.workspace = true
 description.workspace = true
-license.workspace = true
-repository.workspace = true
 readme.workspace = true
-
-[features]
-netlab-tests = []
-
-[dependencies]
-anyhow = "1"
-futures-util = "0.3"
-ipnet = "2"
-nftables = "0.6"
-nix = { version = "0.30", default-features = false, features = [
-    "fs",
-    "mount",
-    "sched",
-] }
-rtnetlink = "0.21"
-slotmap = "1.1.1"
-sysctl = "0.7"
-tokio = { version = "1", features = [
-    "macros",
-    "net",
-    "rt",
-    "rt-multi-thread",
-    "sync",
-    "time",
-] }
+repository.workspace = true
+license.workspace = true
 
 [[test]]
 name = "host"
@@ -57,3 +32,35 @@ required-features = ["netlab-tests"]
 name = "router"
 path = "tests/router.rs"
 required-features = ["netlab-tests"]
+
+[dependencies]
+anyhow = "1"
+futures-util = "0.3"
+ipnet = "2"
+nftables = "0.6"
+nix = {
+  version = "0.30",
+  default-features = false,
+  features = [
+    "fs",
+    "mount",
+    "sched",
+  ]
+}
+rtnetlink = "0.21"
+slotmap = "1"
+sysctl = "0.7"
+tokio = {
+  version = "1",
+  features = [
+    "macros",
+    "net",
+    "rt",
+    "rt-multi-thread",
+    "sync",
+    "time",
+  ]
+}
+
+[features]
+netlab-tests = []

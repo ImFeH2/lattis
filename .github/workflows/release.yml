@@ -39,6 +39,7 @@ jobs:
       contents: write
     outputs:
       release_id: ${{ steps.release.outputs.id }}
+
     steps:
       - name: Prepare draft
         id: release

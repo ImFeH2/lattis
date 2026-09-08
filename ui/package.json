@@ -4,11 +4,11 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "build": "tsc && vite build",
-    "check": "tsc && biome ci .",
     "dev": "vite",
-    "format": "biome check --write .",
+    "build": "tsc && vite build",
     "preview": "vite preview",
+    "format": "biome format --write .",
+    "check": "tsc && biome check --formatter-enabled=false .",
     "test": "vitest run --dir src"
   },
   "dependencies": {
@@ -17,7 +17,6 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.16",
     "@tailwindcss/vite": "4.3.0",
     "@types/node": "^25.9.3",
     "@types/react": "^19.1.8",

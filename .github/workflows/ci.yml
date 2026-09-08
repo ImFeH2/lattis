@@ -70,20 +70,14 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check frontend
-        run: pnpm check:web
+      - name: Format
+        run: pnpm format:check
 
-      - name: Test frontend
-        run: pnpm test:web
+      - name: Check
+        run: pnpm check
 
-      - name: Check Rust
-        run: pnpm check:rust
+      - name: Test
+        run: pnpm test
 
-      - name: Test Rust
-        run: pnpm test:rust
-
-      - name: Build CLI
-        run: cargo build -p lattis-cli --bin lattis --locked
-
-      - name: Build app
-        run: pnpm --dir app tauri build --debug --no-bundle --ci
+      - name: Build
+        run: pnpm build

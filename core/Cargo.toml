@@ -1,12 +1,12 @@
 [package]
 name = "lattis-core"
 version.workspace = true
-edition.workspace = true
 authors.workspace = true
+edition.workspace = true
 description.workspace = true
-license.workspace = true
-repository.workspace = true
 readme.workspace = true
+repository.workspace = true
+license.workspace = true
 
 [dependencies]
 anyhow = "1"
@@ -20,24 +20,27 @@ if-addrs = "0.15"
 ipnet = { version = "2", features = ["serde"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 reqwest = { version = "0.13", default-features = false, features = ["json"] }
-reqwest-eventsource = "0.6.0"
+reqwest-eventsource = "0.6"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["net", "rt", "sync", "time"] }
 tun-rs = { version = "2", features = ["async"] }
-uuid = { version = "1", features = ["v4", "serde"] }
+uuid = { version = "1", features = ["serde", "v4"] }
 x25519-dalek = { version = "2", features = ["serde"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = [
+tokio = {
+  version = "1",
+  features = [
     "macros",
     "net",
     "rt",
     "rt-multi-thread",
     "sync",
     "time",
-] }
+  ]
+}
 tower = { version = "0.5", features = ["util"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-rtnetlink = "0.21.0"
+rtnetlink = "0.21"

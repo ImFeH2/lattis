@@ -42,7 +42,7 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt -p netlab --check
 
-      - name: Lint Rust
+      - name: Check Rust
         run: cargo clippy -p netlab --all-targets --features netlab-tests --locked -- -D warnings
 
       - name: Test Rust

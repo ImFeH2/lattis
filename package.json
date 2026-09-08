@@ -1,22 +1,44 @@
 {
   "name": "lattis",
-  "private": true,
   "version": "0.0.1",
+  "private": true,
   "type": "module",
+  "packageManager": "pnpm@12.3.4",
   "scripts": {
-    "check": "pnpm check:web && pnpm check:rust",
+    "dev": "pnpm --dir ui dev",
+    "build": "pnpm build:cli && pnpm build:app",
+    "build:web": "pnpm --dir ui build",
+    "build:cli": "cargo build -p lattis-cli --bin lattis --locked",
+    "build:app": "pnpm --dir app tauri build --debug --no-bundle --ci",
+    "build:netlab": "cargo build -p netlab --locked",
+    "preview": "pnpm --dir ui preview",
+    "format": "pnpm format:biome && pnpm format:prettier && pnpm format:toml && pnpm format:rust",
+    "format:check": "pnpm format:biome:check && pnpm format:prettier:check && pnpm format:toml:check && pnpm format:rust:check",
+    "format:biome": "biome format --write .",
+    "format:biome:check": "biome format .",
+    "format:prettier": "prettier --write \"**/*.{yml,yaml,html,md,markdown}\" \"!**/pnpm-lock.yaml\" \"!**/target/**\" --ignore-path .gitignore --ignore-path .git/info/exclude",
+    "format:prettier:check": "prettier --check \"**/*.{yml,yaml,html,md,markdown}\" \"!**/pnpm-lock.yaml\" \"!**/target/**\" --ignore-path .gitignore --ignore-path .git/info/exclude",
+    "format:toml": "tombi format --offline",
+    "format:toml:check": "tombi format --offline --check",
+    "format:rust": "cargo fmt --all",
+    "format:rust:check": "cargo fmt --all --check",
+    "check": "pnpm check:toml && pnpm check:web && pnpm check:rust",
+    "check:toml": "tombi lint --offline",
     "check:web": "pnpm --dir ui check",
-    "check:rust": "cargo fmt --all --check && cargo clippy --workspace --exclude netlab --all-targets --locked -- -D warnings",
+    "check:rust": "cargo clippy --workspace --exclude netlab --all-targets --locked -- -D warnings",
+    "check:netlab": "cargo clippy -p netlab --all-targets --features netlab-tests --locked -- -D warnings",
     "test": "pnpm test:web && pnpm test:rust",
     "test:web": "pnpm --dir ui test",
     "test:rust": "cargo test --workspace --exclude netlab --locked",
-    "format": "pnpm --dir ui format && cargo fmt --all",
-    "prepare": "prek install"
+    "test:netlab": "cargo test -p netlab --features netlab-tests --locked --config \"target.'cfg(target_os = \\\"linux\\\")'.runner = ['sudo', '-E']\"",
+    "prepare": "lefthook install"
   },
-  "packageManager": "pnpm@12.3.4",
   "devDependencies": {
+    "@biomejs/biome": "2.4.16",
     "@commitlint/cli": "21.2.1",
     "@commitlint/config-conventional": "21.2.0",
-    "@j178/prek": "0.5.2"
+    "lefthook": "2.1.12",
+    "prettier": "3.9.6",
+    "tombi": "1.5.2"
   }
 }

@@ -18,9 +18,7 @@
   "app": {
     "windows": [
       {
-        "title": "Lattis",
-        "width": 1120,
-        "height": 720
+        "title": "Lattis"
       }
     ],
     "security": {

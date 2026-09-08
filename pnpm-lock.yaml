@@ -109,15 +109,24 @@ importers:
 
   .:
     devDependencies:
+      '@biomejs/biome':
+        specifier: 2.4.16
+        version: 2.4.16
       '@commitlint/cli':
         specifier: 21.2.1
         version: 21.2.1(@types/node@25.9.3)(conventional-commits-parser@7.1.2)(typescript@5.8.3)
       '@commitlint/config-conventional':
         specifier: 21.2.0
         version: 21.2.0
-      '@j178/prek':
-        specifier: 0.5.2
-        version: 0.5.2
+      lefthook:
+        specifier: 2.1.12
+        version: 2.1.12
+      prettier:
+        specifier: 3.9.6
+        version: 3.9.6
+      tombi:
+        specifier: 1.5.2
+        version: 1.5.2
 
   app:
     devDependencies:
@@ -137,12 +146,9 @@ importers:
         specifier: ^19.1.0
         version: 19.2.7(react@19.2.7)
     devDependencies:
-      '@biomejs/biome':
-        specifier: 2.4.16
-        version: 2.4.16
       '@tailwindcss/vite':
         specifier: 4.3.0
-        version: 4.3.0(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0))
+        version: 4.3.0(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0))
       '@types/node':
         specifier: ^25.9.3
         version: 25.9.3
@@ -154,7 +160,7 @@ importers:
         version: 19.2.3(@types/react@19.2.17)
       '@vitejs/plugin-react':
         specifier: ^4.6.0
-        version: 4.7.0(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0))
+        version: 4.7.0(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0))
       tailwindcss:
         specifier: 4.3.0
         version: 4.3.0
@@ -163,10 +169,10 @@ importers:
         version: 5.8.3
       vite:
         specifier: ^7.0.4
-        version: 7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)
+        version: 7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0)
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@types/node@25.9.3)(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0))
+        version: 4.1.10(@types/node@25.9.3)(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0))
 
 packages:
 
@@ -551,69 +557,6 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@j178/prek-android-arm64@0.5.2':
-    resolution: {integrity: sha512-REh3APX8MUwHr4Q9aPvm+59hQRcshXuchzF64X1FYzMl2w9nAoMZqH0YlIfiZ3Mzj9AAt8N9Pp9EAjVPh+o7MA==}
-    engines: {node: '>=18'}
-    cpu: [arm64]
-    os: [android]
-
-  '@j178/prek-darwin-arm64@0.5.2':
-    resolution: {integrity: sha512-Yl7HXs67axUO22OCHCt6gBo3XXG7oP76fAYCD6wVHQJrKBisKTAmTCm2un3lP6k5IxMvzk5YeHW64FUs5Xbdfw==}
-    engines: {node: '>=18'}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@j178/prek-darwin-x64@0.5.2':
-    resolution: {integrity: sha512-VFrjQg31CZtkW0CVHv77V6mSQBowqHAm40zqDttnRC9dDIpRIyleLCJUyjJ9MbUMf2M8PQZbW/HenuEnx1nm5A==}
-    engines: {node: '>=18'}
-    cpu: [x64]
-    os: [darwin]
-
-  '@j178/prek-linux-arm64-gnu@0.5.2':
-    resolution: {integrity: sha512-7F/Y3hvsSCR36wbrvvCDHSwFyDhwVDbyjKiSUSwI0yGGRlaC4Kg3S7mwqoCKfdULFlYyg4HA+q9HUA0U2IaQJA==}
-    engines: {node: '>=18'}
-    cpu: [arm64]
-    os: [linux]
-    libc: [glibc]
-
-  '@j178/prek-linux-arm64-musl@0.5.2':
-    resolution: {integrity: sha512-nWIcMqw8Nre+WTCYHV0ZNFM4QcULoa0bPq9HyLcIrS0nirLj0AKkrjmVrVPideBvUgsT26hCZ+GaXkK7J7JgPw==}
-    engines: {node: '>=18'}
-    cpu: [arm64]
-    os: [linux]
-    libc: [musl]
-
-  '@j178/prek-linux-x64-gnu@0.5.2':
-    resolution: {integrity: sha512-OCU+HbvLDaKwf723oHYohSVohjN1RrTYjFvgh/DpgIrbZjhT/qkAvBSfjhMZouy3GDV1089Nj0nTgVDcdvgzVQ==}
-    engines: {node: '>=18'}
-    cpu: [x64]
-    os: [linux]
-    libc: [glibc]
-
-  '@j178/prek-linux-x64-musl@0.5.2':
-    resolution: {integrity: sha512-AazCkI/MT1iKbzBOwtXf3ulJBsCIyUJ8sUbXGCWZq4zJzX/eGXfFMMdzQGe2C33EGxG/hNuDqFjFdZFTyuplvg==}
-    engines: {node: '>=18'}
-    cpu: [x64]
-    os: [linux]
-    libc: [musl]
-
-  '@j178/prek-win32-arm64-msvc@0.5.2':
-    resolution: {integrity: sha512-z/Wp0dznmlcWa8O0ufUDzmAs9TPFeWaJR30m35+E27plMx28v9SyHRzVyoYAf3O390GfyayMflv8ywVLGd+l9w==}
-    engines: {node: '>=18'}
-    cpu: [arm64]
-    os: [win32]
-
-  '@j178/prek-win32-x64-msvc@0.5.2':
-    resolution: {integrity: sha512-g0GoS1f8apy4CfdyMcaoxvPlSzbxWcXFp9yP5IBE8UL/Uh40ZI9UI2FBROHTxbqxzXfxwkE3iu8EdgNPyJhUzw==}
-    engines: {node: '>=18'}
-    cpu: [x64]
-    os: [win32]
-
-  '@j178/prek@0.5.2':
-    resolution: {integrity: sha512-uzcz312sgvFcwW8+8gCbmYZurmlzaCofsmKIFxzFuL/cFt/a5KWNw8TyFSbOvo/wWPW/j1L8qs7RruRH3mw3OQ==}
-    engines: {node: '>=18'}
-    hasBin: true
-
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
 
@@ -955,6 +898,64 @@ packages:
     engines: {node: '>= 10'}
     hasBin: true
 
+  '@tombi-toml/cli-darwin-arm64@1.5.2':
+    resolution: {integrity: sha512-ytz9kn4vvVnZNtGX4BWn/kk0LKYlNWUVaq1EDNqZkIxIkrpVamKLdPwQcNTk1U4iOrL9UOtX/cKJ65MXdA839g==}
+    engines: {node: '>=14.0.0'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@tombi-toml/cli-darwin-x64@1.5.2':
+    resolution: {integrity: sha512-vxfC9nA7vPQoB2qTQFbcTYfraAb5Ely6TF2b8JUInm1MGS4CZBPapssQFlfscczknhAgwm+xI9SDsf/2ODlYyA==}
+    engines: {node: '>=14.0.0'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@tombi-toml/cli-linux-arm64-musl@1.5.2':
+    resolution: {integrity: sha512-C+F3r3Bcmmgr32Fns6bYRWJTYhSHfD13zGdpCemVo0zGbQC/3bmkOe+3Bv6rQkrf6LNbWxEp1yJSoscbmB9umA==}
+    engines: {node: '>=14.0.0'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@tombi-toml/cli-linux-arm64@1.5.2':
+    resolution: {integrity: sha512-E2PH6DTTnmk3e5fFUg+0B/GJrpfaIya1MbBxfNzg/89y5kvUOePoiaTXhS9gGZWdfoMGt93MAY6L7/YhbSZrAA==}
+    engines: {node: '>=14.0.0'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@tombi-toml/cli-linux-x64-musl@1.5.2':
+    resolution: {integrity: sha512-YwAYyw5Fo2AjMVE0wIthZriFU+nvtD5pYemOZLxHephVuapL2piEOPBMaD2DJLxKkbxJEjnm0HTUqec+8RK6Cg==}
+    engines: {node: '>=14.0.0'}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@tombi-toml/cli-linux-x64@1.5.2':
+    resolution: {integrity: sha512-9t2OiI0r3LknEXRsqkucCSbWrBwqn261g6aa74UEEft/j4foTHZw4edwR2dGBJcleJSZsenpr8GQ/0N2ygq3Jw==}
+    engines: {node: '>=14.0.0'}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@tombi-toml/cli-sunos-x64@1.5.2':
+    resolution: {integrity: sha512-n/tIYWNJzduQKHIt5YTh5B6q1goNrN8NnvkQtwEVThPpGsr5oUhv9ImTV2U0DynCAuxw/u/p3/3s1p8oN2iNJw==}
+    engines: {node: '>=14.0.0'}
+    cpu: [x64]
+    os: [sunos]
+
+  '@tombi-toml/cli-win32-arm64@1.5.2':
+    resolution: {integrity: sha512-XBWo03vFq4L0z6zv0LFtmwzZ1yETohC5mYIM8WzuCc6STQpHtE+3QNgUeEV85WS2cx88wkAoOrAz1LiXUuP6pQ==}
+    engines: {node: '>=14.0.0'}
+    cpu: [arm64]
+    os: [win32]
+
+  '@tombi-toml/cli-win32-x64@1.5.2':
+    resolution: {integrity: sha512-MibxHNSivBqHEwBX3RQgBA01US8pAsEK5njYViAd+NdTiiBSIwybWaMeOd5Hq6RJEcTz7pKNbcHNe4fGv7SnrQ==}
+    engines: {node: '>=14.0.0'}
+    cpu: [x64]
+    os: [win32]
+
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
 
@@ -1242,6 +1243,60 @@ packages:
     engines: {node: '>=6'}
     hasBin: true
 
+  lefthook-darwin-arm64@2.1.12:
+    resolution: {integrity: sha512-GSUjqaCuxAYlPOovbjXEWE3HAIa/xOQkTTmZ937zieQldjPLTaC7+s5FHoxKywn+D9riBlofkDqG7Z4f5zzmPA==}
+    cpu: [arm64]
+    os: [darwin]
+
+  lefthook-darwin-x64@2.1.12:
+    resolution: {integrity: sha512-qAUHSSw/7Afi5wxkoLkxORxSicCeTBXyVLnRgD6YZra6udviozpK3Aok9Z6FIWeKc5FBijRMSNDxGPTREhsjcQ==}
+    cpu: [x64]
+    os: [darwin]
+
+  lefthook-freebsd-arm64@2.1.12:
+    resolution: {integrity: sha512-FHZRfKliFNbyz54zsoGdVe9muq67cNjBTZ6jrPPUjI7xUuyCwSpzA+1OpiwJT00L9pP5ZGONBqnGZKnrpC+7Uw==}
+    cpu: [arm64]
+    os: [freebsd]
+
+  lefthook-freebsd-x64@2.1.12:
+    resolution: {integrity: sha512-HYQZPGy2DDEx7dbuotusJpujY5q9igOLgx36qeeQcNQuvvdGHPj2ZGSIsGKhoJ0dw5Qa4knKJoPAHEZQWdV/og==}
+    cpu: [x64]
+    os: [freebsd]
+
+  lefthook-linux-arm64@2.1.12:
+    resolution: {integrity: sha512-ipjOri2PB/sk4noPrHQuM5fcpNBjmlKo4qMtXyLnxeOxGYHWZzf0Xi0OtrXHQ//tOprcv40ADvhUuSdcGqigLw==}
+    cpu: [arm64]
+    os: [linux]
+
+  lefthook-linux-x64@2.1.12:
+    resolution: {integrity: sha512-DmU6xfvqVoFdW+STyc70YI4Ry8vkHGKHx+IJ1Js/Gacq5dv+fiwNzwle3bi28EkL6P8xY67B/CfQfRj4SRU4tg==}
+    cpu: [x64]
+    os: [linux]
+
+  lefthook-openbsd-arm64@2.1.12:
+    resolution: {integrity: sha512-vb0J7bElLvoaCWQmna3HntsvoNqMsGAhfjjC99ss1OdCteufZKM3RxCVoMBEbD50Itv2c1Ua2AFVToltVFTy1Q==}
+    cpu: [arm64]
+    os: [openbsd]
+
+  lefthook-openbsd-x64@2.1.12:
+    resolution: {integrity: sha512-QOmhDWqPPK4+99scanfEmbJjUR+JYC93qhr/0bp5Dj3LaR3kVFNWc6zOQUsOTPy/LC6PG759Lej/mr/BtjUL2Q==}
+    cpu: [x64]
+    os: [openbsd]
+
+  lefthook-windows-arm64@2.1.12:
+    resolution: {integrity: sha512-eErEyr9AHkRFj6TxpCQeKGd0s6IrtL/VEIZ/ssg8dNfG+ycR4jAW/IAlrJSw6/ZQXb3WtWLaQ6QA5c+TLh7vmg==}
+    cpu: [arm64]
+    os: [win32]
+
+  lefthook-windows-x64@2.1.12:
+    resolution: {integrity: sha512-0h+WmDVdDriTjloD/UbjPq/ZtqaaJlPAdGcVwMCEdAxfbF0FTgDbKX3igui9g2U/qG2y6QpVhtz1jeiRe7ctaw==}
+    cpu: [x64]
+    os: [win32]
+
+  lefthook@2.1.12:
+    resolution: {integrity: sha512-2uOexfsrrRhCiTUWdGyDySxVHHhOFJ8MQejs27dM3hugrQB48/z1ZVlaNoxpZ1SnzQ1GaDIbO5rAvicwyiknYQ==}
+    hasBin: true
+
   lightningcss-android-arm64@1.32.0:
     resolution: {integrity: sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg==}
     engines: {node: '>= 12.0.0'}
@@ -1363,6 +1418,11 @@ packages:
     resolution: {integrity: sha512-FfR8sjd4em2T6fb3I2MwAJU7HWVMr9zba+enmQeeWFfCbm+UOC/0X4DS8XtpUTMwWMGbjKYP7xjfNekzyGmB3A==}
     engines: {node: ^10 || ^12 || >=14}
 
+  prettier@3.9.6:
+    resolution: {integrity: sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g==}
+    engines: {node: '>=14'}
+    hasBin: true
+
   react-dom@19.2.7:
     resolution: {integrity: sha512-t0BRVXvbiE/o20Hfw669rLbMCDWtYZLvmJigy2f0MxsXF+71pxhR3xOkspmsO8h3ZlNzyibAmtCa3l4lYKk6gQ==}
     peerDependencies:
@@ -1451,6 +1511,11 @@ packages:
   tinyrainbow@3.1.1:
     resolution: {integrity: sha512-yau8yJdTt989Mm0Bd/236QnzEiPf2xLLTqUZRUJOo/3CB078LSwzei343DgtJVmfJKJE3TMINY1u42SQsP6mXw==}
     engines: {node: '>=14.0.0'}
+
+  tombi@1.5.2:
+    resolution: {integrity: sha512-R5qNbrixcz4NgXnaRhPjbCHfmxoYamIX0YWRjHth9986fQA3l9V7mCvQZ1OyzqPgOQfSDIRu0Y6u2EFy67MArg==}
+    engines: {node: '>=14.0.0'}
+    hasBin: true
 
   typescript@5.8.3:
     resolution: {integrity: sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ==}
@@ -1562,6 +1627,11 @@ packages:
 
   yallist@3.1.1:
     resolution: {integrity: sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==}
+
+  yaml@2.9.0:
+    resolution: {integrity: sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==}
+    engines: {node: '>= 14.6'}
+    hasBin: true
 
   yargs-parser@22.0.0:
     resolution: {integrity: sha512-rwu/ClNdSMpkSrUb+d6BRsSkLUq1fmfsY6TOpYzTwvwkg1/NRG85KBy3kq++A8LKQwX6lsu+aWad+2khvuXrqw==}
@@ -1917,45 +1987,6 @@ snapshots:
   '@esbuild/win32-x64@0.27.7':
     optional: true
 
-  '@j178/prek-android-arm64@0.5.2':
-    optional: true
-
-  '@j178/prek-darwin-arm64@0.5.2':
-    optional: true
-
-  '@j178/prek-darwin-x64@0.5.2':
-    optional: true
-
-  '@j178/prek-linux-arm64-gnu@0.5.2':
-    optional: true
-
-  '@j178/prek-linux-arm64-musl@0.5.2':
-    optional: true
-
-  '@j178/prek-linux-x64-gnu@0.5.2':
-    optional: true
-
-  '@j178/prek-linux-x64-musl@0.5.2':
-    optional: true
-
-  '@j178/prek-win32-arm64-msvc@0.5.2':
-    optional: true
-
-  '@j178/prek-win32-x64-msvc@0.5.2':
-    optional: true
-
-  '@j178/prek@0.5.2':
-    optionalDependencies:
-      '@j178/prek-android-arm64': 0.5.2
-      '@j178/prek-darwin-arm64': 0.5.2
-      '@j178/prek-darwin-x64': 0.5.2
-      '@j178/prek-linux-arm64-gnu': 0.5.2
-      '@j178/prek-linux-arm64-musl': 0.5.2
-      '@j178/prek-linux-x64-gnu': 0.5.2
-      '@j178/prek-linux-x64-musl': 0.5.2
-      '@j178/prek-win32-arm64-msvc': 0.5.2
-      '@j178/prek-win32-x64-msvc': 0.5.2
-
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
@@ -2121,12 +2152,12 @@ snapshots:
       '@tailwindcss/oxide-win32-arm64-msvc': 4.3.0
       '@tailwindcss/oxide-win32-x64-msvc': 4.3.0
 
-  '@tailwindcss/vite@4.3.0(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0))':
+  '@tailwindcss/vite@4.3.0(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0))':
     dependencies:
       '@tailwindcss/node': 4.3.0
       '@tailwindcss/oxide': 4.3.0
       tailwindcss: 4.3.0
-      vite: 7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)
+      vite: 7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0)
 
   '@tauri-apps/api@2.11.0': {}
 
@@ -2177,6 +2208,33 @@ snapshots:
       '@tauri-apps/cli-win32-ia32-msvc': 2.11.2
       '@tauri-apps/cli-win32-x64-msvc': 2.11.2
 
+  '@tombi-toml/cli-darwin-arm64@1.5.2':
+    optional: true
+
+  '@tombi-toml/cli-darwin-x64@1.5.2':
+    optional: true
+
+  '@tombi-toml/cli-linux-arm64-musl@1.5.2':
+    optional: true
+
+  '@tombi-toml/cli-linux-arm64@1.5.2':
+    optional: true
+
+  '@tombi-toml/cli-linux-x64-musl@1.5.2':
+    optional: true
+
+  '@tombi-toml/cli-linux-x64@1.5.2':
+    optional: true
+
+  '@tombi-toml/cli-sunos-x64@1.5.2':
+    optional: true
+
+  '@tombi-toml/cli-win32-arm64@1.5.2':
+    optional: true
+
+  '@tombi-toml/cli-win32-x64@1.5.2':
+    optional: true
+
   '@types/babel__core@7.20.5':
     dependencies:
       '@babel/parser': 7.29.7
@@ -2219,7 +2277,7 @@ snapshots:
     dependencies:
       csstype: 3.2.3
 
-  '@vitejs/plugin-react@4.7.0(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0))':
+  '@vitejs/plugin-react@4.7.0(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0))':
     dependencies:
       '@babel/core': 7.29.7
       '@babel/plugin-transform-react-jsx-self': 7.29.7(@babel/core@7.29.7)
@@ -2227,7 +2285,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-beta.27
       '@types/babel__core': 7.20.5
       react-refresh: 0.17.0
-      vite: 7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)
+      vite: 7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -2240,13 +2298,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.1
 
-  '@vitest/mocker@4.1.10(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0))':
+  '@vitest/mocker@4.1.10(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0))':
     dependencies:
       '@vitest/spy': 4.1.10
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)
+      vite: 7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0)
 
   '@vitest/pretty-format@4.1.10':
     dependencies:
@@ -2458,6 +2516,49 @@ snapshots:
 
   json5@2.2.3: {}
 
+  lefthook-darwin-arm64@2.1.12:
+    optional: true
+
+  lefthook-darwin-x64@2.1.12:
+    optional: true
+
+  lefthook-freebsd-arm64@2.1.12:
+    optional: true
+
+  lefthook-freebsd-x64@2.1.12:
+    optional: true
+
+  lefthook-linux-arm64@2.1.12:
+    optional: true
+
+  lefthook-linux-x64@2.1.12:
+    optional: true
+
+  lefthook-openbsd-arm64@2.1.12:
+    optional: true
+
+  lefthook-openbsd-x64@2.1.12:
+    optional: true
+
+  lefthook-windows-arm64@2.1.12:
+    optional: true
+
+  lefthook-windows-x64@2.1.12:
+    optional: true
+
+  lefthook@2.1.12:
+    optionalDependencies:
+      lefthook-darwin-arm64: 2.1.12
+      lefthook-darwin-x64: 2.1.12
+      lefthook-freebsd-arm64: 2.1.12
+      lefthook-freebsd-x64: 2.1.12
+      lefthook-linux-arm64: 2.1.12
+      lefthook-linux-x64: 2.1.12
+      lefthook-openbsd-arm64: 2.1.12
+      lefthook-openbsd-x64: 2.1.12
+      lefthook-windows-arm64: 2.1.12
+      lefthook-windows-x64: 2.1.12
+
   lightningcss-android-arm64@1.32.0:
     optional: true
 
@@ -2547,6 +2648,8 @@ snapshots:
       nanoid: 3.3.12
       picocolors: 1.1.1
       source-map-js: 1.2.1
+
+  prettier@3.9.6: {}
 
   react-dom@19.2.7(react@19.2.7):
     dependencies:
@@ -2638,6 +2741,18 @@ snapshots:
 
   tinyrainbow@3.1.1: {}
 
+  tombi@1.5.2:
+    optionalDependencies:
+      '@tombi-toml/cli-darwin-arm64': 1.5.2
+      '@tombi-toml/cli-darwin-x64': 1.5.2
+      '@tombi-toml/cli-linux-arm64': 1.5.2
+      '@tombi-toml/cli-linux-arm64-musl': 1.5.2
+      '@tombi-toml/cli-linux-x64': 1.5.2
+      '@tombi-toml/cli-linux-x64-musl': 1.5.2
+      '@tombi-toml/cli-sunos-x64': 1.5.2
+      '@tombi-toml/cli-win32-arm64': 1.5.2
+      '@tombi-toml/cli-win32-x64': 1.5.2
+
   typescript@5.8.3: {}
 
   undici-types@7.24.6: {}
@@ -2648,7 +2763,7 @@ snapshots:
       escalade: 3.2.0
       picocolors: 1.1.1
 
-  vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0):
+  vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0):
     dependencies:
       esbuild: 0.27.7
       fdir: 6.5.0(picomatch@4.0.4)
@@ -2661,11 +2776,12 @@ snapshots:
       fsevents: 2.3.3
       jiti: 2.7.0
       lightningcss: 1.32.0
+      yaml: 2.9.0
 
-  vitest@4.1.10(@types/node@25.9.3)(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)):
+  vitest@4.1.10(@types/node@25.9.3)(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0)):
     dependencies:
       '@vitest/expect': 4.1.10
-      '@vitest/mocker': 4.1.10(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0))
+      '@vitest/mocker': 4.1.10(vite@7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0))
       '@vitest/pretty-format': 4.1.10
       '@vitest/runner': 4.1.10
       '@vitest/snapshot': 4.1.10
@@ -2682,7 +2798,7 @@ snapshots:
       tinyexec: 1.3.1
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.1
-      vite: 7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)
+      vite: 7.3.5(@types/node@25.9.3)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 25.9.3
@@ -2703,6 +2819,9 @@ snapshots:
   y18n@5.0.8: {}
 
   yallist@3.1.1: {}
+
+  yaml@2.9.0:
+    optional: true
 
   yargs-parser@22.0.0: {}
 
