@@ -5,15 +5,15 @@
   "identifier": "im.feh2.lattis",
   "build": {
     "beforeDevCommand": {
-      "cwd": "../ui",
+      "cwd": "../web",
       "script": "pnpm dev"
     },
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": {
-      "cwd": "../ui",
+      "cwd": "../web",
       "script": "pnpm build"
     },
-    "frontendDist": "../ui/dist"
+    "frontendDist": "../web/dist"
   },
   "app": {
     "windows": [

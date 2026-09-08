@@ -134,7 +134,7 @@ importers:
         specifier: 2.11.2
         version: 2.11.2
 
-  ui:
+  web:
     dependencies:
       '@tauri-apps/api':
         specifier: ^2

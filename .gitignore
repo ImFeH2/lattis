@@ -4,7 +4,7 @@ node_modules
 # Build output
 /target
 /app/target/
-ui/dist
+web/dist
 app/gen/android
 app/gen/apple
 app/gen/schemas

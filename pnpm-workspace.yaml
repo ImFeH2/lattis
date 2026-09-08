@@ -1,6 +1,6 @@
 packages:
   - app
-  - ui
+  - web
 allowBuilds:
   esbuild: true
   lefthook: false
