@@ -4,10 +4,10 @@ consolidate-commits = true
 
 pre-release-commit-message = "chore: release {{version}}"
 pre-release-replacements = [
-  { file = "package.json", search = '"version": "[^"]+"', replace = '"version": "{{version}}"', exactly = 1 },
-  { file = "app/package.json", search = '"version": "[^"]+"', replace = '"version": "{{version}}"', exactly = 1 },
-  { file = "web/package.json", search = '"version": "[^"]+"', replace = '"version": "{{version}}"', exactly = 1 },
-  { file = "app/tauri.conf.json", search = '"version": "[^"]+"', replace = '"version": "{{version}}"', exactly = 1 },
+  { file = "../package.json", search = '"version": "[^"]+"', replace = '"version": "{{version}}"', exactly = 1 },
+  { file = "../app/package.json", search = '"version": "[^"]+"', replace = '"version": "{{version}}"', exactly = 1 },
+  { file = "../web/package.json", search = '"version": "[^"]+"', replace = '"version": "{{version}}"', exactly = 1 },
+  { file = "../app/tauri.conf.json", search = '"version": "[^"]+"', replace = '"version": "{{version}}"', exactly = 1 },
 ]
 
 tag-name = "v{{version}}"
