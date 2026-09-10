@@ -41,23 +41,15 @@ jobs:
           - name: Linux x64
             os: ubuntu-latest
             platform: linux
-            bundle: deb
-            args: ""
           - name: Windows x64
             os: windows-latest
             platform: windows
-            bundle: nsis
-            args: ""
           - name: macOS arm64
             os: macos-15
             platform: macos-arm64
-            bundle: dmg
-            args: --no-sign
           - name: macOS x64
             os: macos-15-intel
             platform: macos-x64
-            bundle: dmg
-            args: --no-sign
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -111,7 +103,7 @@ jobs:
           releaseName: Lattis ${{ github.ref_name }}
           releaseDraft: true
           releaseAssetNamePattern: Lattis-${{ github.ref_name }}-${{ matrix.platform }}[ext]
-          args: --bundles ${{ matrix.bundle }} ${{ matrix.args }} --ci
+          args: --ci
 
   cli:
     name: CLI (${{ matrix.name }})
