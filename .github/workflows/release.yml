@@ -77,18 +77,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
+          sudo apt-get install -y \
             libayatana-appindicator3-dev \
             libgtk-3-dev \
             librsvg2-dev \
             libsoup-3.0-dev \
             libxdo-dev \
             libwebkit2gtk-4.1-dev
-
-      - name: Install Windows dependencies
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: choco install nsis -y --no-progress
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
@@ -103,7 +98,6 @@ jobs:
           releaseName: Lattis ${{ github.ref_name }}
           releaseDraft: true
           releaseAssetNamePattern: Lattis-${{ github.ref_name }}-${{ matrix.platform }}[ext]
-          args: --ci
 
   cli:
     name: CLI (${{ matrix.name }})
