@@ -40,10 +40,10 @@ jobs:
         include:
           - name: Linux x64
             os: ubuntu-latest
-            platform: linux
+            platform: linux-x64
           - name: Windows x64
             os: windows-latest
-            platform: windows
+            platform: windows-x64
           - name: macOS arm64
             os: macos-15
             platform: macos-arm64
@@ -87,6 +87,8 @@ jobs:
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
+        env:
+          LEFTHOOK: 0
 
       - name: Build and upload app
         uses: tauri-apps/tauri-action@v1
@@ -95,9 +97,9 @@ jobs:
         with:
           projectPath: app
           tagName: ${{ github.ref_name }}
-          releaseName: Lattis ${{ github.ref_name }}
+          releaseName: ${{ github.ref_name }}
           releaseDraft: true
-          releaseAssetNamePattern: Lattis-${{ github.ref_name }}-${{ matrix.platform }}[ext]
+          releaseAssetNamePattern: lattis-app-v[version]-${{ matrix.platform }}[ext]
 
   cli:
     name: CLI (${{ matrix.name }})
@@ -108,10 +110,10 @@ jobs:
         include:
           - name: Linux x64
             os: ubuntu-latest
-            platform: linux
+            platform: linux-x64
           - name: Windows x64
             os: windows-latest
-            platform: windows
+            platform: windows-x64
           - name: macOS arm64
             os: macos-15
             platform: macos-arm64
@@ -135,22 +137,13 @@ jobs:
       - name: Build CLI
         run: cargo build -p lattis-cli --bin lattis --release --locked
 
-      - name: Archive CLI
-        if: runner.os != 'Windows'
+      - name: Prepare CLI
+        env:
+          CLI_EXTENSION: ${{ runner.os == 'Windows' && '.exe' || '' }}
         run: |
           mkdir -p release
-          tar -czf "release/lattis-${GITHUB_REF_NAME}-${{ matrix.platform }}.tar.gz" \
-            -C target/release \
-            lattis
-
-      - name: Archive CLI for Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force release
-          Compress-Archive `
-            -Path target/release/lattis.exe `
-            -DestinationPath "release/lattis-${env:GITHUB_REF_NAME}-windows.zip"
+          cp "target/release/lattis${CLI_EXTENSION}" \
+            "release/lattis-cli-${GITHUB_REF_NAME}-${{ matrix.platform }}${CLI_EXTENSION}"
 
       - name: Upload CLI
         env:
