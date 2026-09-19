@@ -29,11 +29,26 @@ jobs:
     name: Netlab
     uses: ./.github/workflows/netlab.yml
 
-  app:
-    name: App (${{ matrix.name }})
+  release:
+    name: Draft release
     needs:
       - ci
       - netlab
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --draft --title "$GITHUB_REF_NAME"
+
+  app:
+    name: App (${{ matrix.name }})
+    needs: release
     strategy:
       fail-fast: false
       matrix:
@@ -103,7 +118,7 @@ jobs:
 
   cli:
     name: CLI (${{ matrix.name }})
-    needs: app
+    needs: release
     strategy:
       fail-fast: false
       matrix:
@@ -152,7 +167,9 @@ jobs:
 
   publish:
     name: Publish
-    needs: cli
+    needs:
+      - app
+      - cli
     runs-on: ubuntu-latest
     permissions:
       contents: write
